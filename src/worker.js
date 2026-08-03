@@ -48,6 +48,8 @@ parentPort.on("message", async (job) => {
       roadLabels: renderRoadLabels,
       natureLabels: renderNatureLabels,
       zoom: z,
+      tileX: x,
+      tileY: y,
     });
     if (!svg) {
       parentPort.postMessage({ type: "result", status: "skipped", z, x, y, reason: "invalid" });

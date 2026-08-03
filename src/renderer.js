@@ -114,7 +114,44 @@ function appendToGroup(groups, layerName, fragment) {
   groups.set(layerName, `${existing}${fragment}`);
 }
 
-function renderNatureLabels(tile, groups, zoomLevel) {
+function normalizeLabelText(text) {
+  return String(text).trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function hashString(value) {
+  let hash = 5381;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 33) ^ value.charCodeAt(i);
+  }
+  return hash >>> 0;
+}
+
+function isNatureLabelOwner(dedupKey, tileX, tileY) {
+  if (!Number.isInteger(tileX) || !Number.isInteger(tileY)) return true;
+  const hash = hashString(dedupKey);
+  const ownerParityX = hash & 1;
+  const ownerParityY = (hash >> 1) & 1;
+  return (tileX & 1) === ownerParityX && (tileY & 1) === ownerParityY;
+}
+
+function buildNatureDedupKey(theme, labelText, anchor, tileX, tileY) {
+  const normalized = normalizeLabelText(labelText);
+  if (!anchor || !Number.isFinite(anchor.x) || !Number.isFinite(anchor.y)) {
+    return `${theme}|${normalized}`;
+  }
+  if (!Number.isInteger(tileX) || !Number.isInteger(tileY)) {
+    const localBucketX = Math.floor(anchor.x / 64);
+    const localBucketY = Math.floor(anchor.y / 64);
+    return `${theme}|${normalized}|${localBucketX}|${localBucketY}`;
+  }
+  const globalX = tileX * 256 + anchor.x;
+  const globalY = tileY * 256 + anchor.y;
+  const bucketX = Math.floor(globalX / 96);
+  const bucketY = Math.floor(globalY / 96);
+  return `${theme}|${normalized}|${bucketX}|${bucketY}`;
+}
+
+function renderNatureLabels(tile, groups, zoomLevel, tileX, tileY) {
   const waterTextStyle = getNatureTextStyle("water");
   const natureTextStyle = getNatureTextStyle("nature");
   if (!waterTextStyle && !natureTextStyle) return;
@@ -124,6 +161,7 @@ function renderNatureLabels(tile, groups, zoomLevel) {
     {
       sourceLayers: ["water_name"],
       targetGroup: "water",
+      theme: "water",
       style: waterTextStyle,
       canRender: (properties, geometry) => shouldRenderWaterLabel(properties, geometry, zoomLevel),
       lineLabels: true,
@@ -131,6 +169,7 @@ function renderNatureLabels(tile, groups, zoomLevel) {
     {
       sourceLayers: ["waterway"],
       targetGroup: "water",
+      theme: "water",
       style: waterTextStyle,
       canRender: (properties, geometry) => shouldRenderWaterLabel(properties, geometry, zoomLevel),
       lineLabels: true,
@@ -138,6 +177,7 @@ function renderNatureLabels(tile, groups, zoomLevel) {
     {
       sourceLayers: ["park"],
       targetGroup: "landuse",
+      theme: "nature",
       style: natureTextStyle,
       canRender: (_, geometry) => shouldRenderNatureAreaLabel(geometry, zoomLevel),
       lineLabels: false,
@@ -165,6 +205,15 @@ function renderNatureLabels(tile, groups, zoomLevel) {
           if (longestLine.length < 2) continue;
           const pathData = lineToPathData(longestLine);
           if (!pathData) continue;
+          const anchor = longestLine[Math.floor(longestLine.length / 2)];
+          const ownershipKey = buildNatureDedupKey(
+            config.theme,
+            labelText,
+            anchor,
+            tileX,
+            tileY
+          );
+          if (!isNatureLabelOwner(ownershipKey, tileX, tileY)) continue;
           const dedupKey = `${config.targetGroup}|${labelText}|${pathData}`;
           if (seen.has(dedupKey)) continue;
           seen.add(dedupKey);
@@ -182,6 +231,14 @@ function renderNatureLabels(tile, groups, zoomLevel) {
         }
 
         const anchor = getLabelAnchor(geometry);
+        const ownershipKey = buildNatureDedupKey(
+          config.theme,
+          labelText,
+          anchor,
+          tileX,
+          tileY
+        );
+        if (!isNatureLabelOwner(ownershipKey, tileX, tileY)) continue;
         const dedupKey = `${config.targetGroup}|${labelText}|${anchor?.x ?? 0}|${anchor?.y ?? 0}`;
         if (seen.has(dedupKey)) continue;
         seen.add(dedupKey);
@@ -212,6 +269,8 @@ export function renderTileToSvg(tileBuffer, options = {}) {
   const renderRoadLabels = Boolean(options.roadLabels);
   const renderNatureLabelsEnabled = Boolean(options.natureLabels);
   const zoomLevel = Number.isInteger(options.zoom) ? options.zoom : undefined;
+  const tileX = Number.isInteger(options.tileX) ? options.tileX : undefined;
+  const tileY = Number.isInteger(options.tileY) ? options.tileY : undefined;
   let roadLabelId = 0;
 
   for (const layerName of getLayerOrder()) {
@@ -299,7 +358,7 @@ export function renderTileToSvg(tileBuffer, options = {}) {
   }
 
   if (renderNatureLabelsEnabled) {
-    renderNatureLabels(tile, groups, zoomLevel);
+    renderNatureLabels(tile, groups, zoomLevel, tileX, tileY);
   }
 
   return buildSvgDocument(groups);
