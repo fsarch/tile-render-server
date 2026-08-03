@@ -364,6 +364,64 @@ export function getTextStyleForLayer(layerName: LayerName): SvgStyle | null {
   return { ...styleSet.text };
 }
 
+function toNumberOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function placeClassBaseSize(placeClass: string): number {
+  if (placeClass === "country") return 16;
+  if (placeClass === "state" || placeClass === "province" || placeClass === "region") return 14;
+  if (placeClass === "city") return 13;
+  if (placeClass === "town") return 11.5;
+  if (placeClass === "village" || placeClass === "suburb") return 10;
+  return 9;
+}
+
+export function getTextStyleForFeature(
+  layerName: LayerName,
+  properties: Record<string, unknown> = {}
+): SvgStyle | null {
+  const base = getTextStyleForLayer(layerName);
+  if (!base) return null;
+
+  if (layerName !== "places") {
+    return base;
+  }
+
+  const placeClass = String(properties.class ?? "").toLowerCase();
+  const rank = toNumberOrNull(properties.rank);
+  const population = toNumberOrNull(properties.population);
+  const capital = toNumberOrNull(properties.capital);
+
+  let size = placeClassBaseSize(placeClass);
+
+  if (capital !== null && capital > 0) size += 1;
+  if (rank !== null) {
+    if (rank <= 3) size += 2;
+    else if (rank <= 6) size += 1;
+    else if (rank >= 11) size -= 1;
+  }
+  if (population !== null) {
+    if (population >= 2_000_000) size += 2;
+    else if (population >= 500_000) size += 1;
+    else if (population < 25_000) size -= 0.8;
+  }
+
+  const fontSize = Math.max(8, Math.min(18, size));
+  const strokeWidth = Number(Math.max(1.8, fontSize * 0.2).toFixed(2));
+
+  return {
+    ...base,
+    "font-size": Number(fontSize.toFixed(1)),
+    "stroke-width": strokeWidth,
+  };
+}
+
 function sanitizeClassToken(token: unknown): string {
   if (typeof token !== "string") return "";
   return token.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-");

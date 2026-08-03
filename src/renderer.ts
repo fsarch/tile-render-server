@@ -15,6 +15,7 @@ import {
   getRailSleeperStyle,
   getSourceLayerNames,
   getStyleForFeature,
+  getTextStyleForFeature,
   getTextStyleForLayer,
   isFeatureAllowedForLayer,
   isSupportedLayer,
@@ -324,7 +325,7 @@ function renderLayerFeatures(
 
       const labelText = getFeatureLabel(properties);
       if (renderLabels && labelText) {
-        const textStyle = getTextStyleForLayer(layerName);
+        const textStyle = getTextStyleForFeature(layerName, properties);
         if (!textStyle) continue;
         const anchor = getLabelAnchor(geometry);
         const text = renderLabelElement(anchor, labelText, className, textStyle);
