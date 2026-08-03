@@ -1,11 +1,35 @@
+import type { VectorTileFeature } from "@mapbox/vector-tile";
+
 const TILE_SIZE = 256;
 const DEFAULT_EXTENT = 4096;
 
-function toTileCoord(value, extent) {
+export interface Point2D {
+  x: number;
+  y: number;
+}
+
+export interface PolygonGeometry {
+  kind: "Polygon";
+  rings: Point2D[][];
+}
+
+export interface LineStringGeometry {
+  kind: "LineString";
+  lines: Point2D[][];
+}
+
+export interface PointGeometry {
+  kind: "Point";
+  points: Point2D[];
+}
+
+export type NormalizedGeometry = PolygonGeometry | LineStringGeometry | PointGeometry;
+
+function toTileCoord(value: number, extent: number): number {
   return (value / extent) * TILE_SIZE;
 }
 
-function ringArea(points) {
+function ringArea(points: Point2D[]): number {
   let area = 0;
   for (let i = 0; i < points.length; i += 1) {
     const a = points[i];
@@ -15,7 +39,7 @@ function ringArea(points) {
   return area / 2;
 }
 
-export function getLineLength(line) {
+export function getLineLength(line: Point2D[]): number {
   if (!Array.isArray(line) || line.length < 2) return 0;
   let length = 0;
   for (let i = 1; i < line.length; i += 1) {
@@ -26,7 +50,7 @@ export function getLineLength(line) {
   return length;
 }
 
-export function getPolygonArea(rings) {
+export function getPolygonArea(rings: Point2D[][]): number {
   if (!Array.isArray(rings) || rings.length === 0) return 0;
   let area = 0;
   for (const ring of rings) {
@@ -35,7 +59,10 @@ export function getPolygonArea(rings) {
   return area;
 }
 
-export function decodeFeatureGeometry(feature, extent = DEFAULT_EXTENT) {
+export function decodeFeatureGeometry(
+  feature: VectorTileFeature,
+  extent = DEFAULT_EXTENT
+): NormalizedGeometry | null {
   if (!feature || typeof feature.loadGeometry !== "function") return null;
   const geometry = feature.loadGeometry();
   if (!Array.isArray(geometry) || geometry.length === 0) return null;
@@ -72,8 +99,7 @@ export function decodeFeatureGeometry(feature, extent = DEFAULT_EXTENT) {
   return null;
 }
 
-export function getLabelAnchor(geometry) {
-  if (!geometry) return null;
+export function getLabelAnchor(geometry: NormalizedGeometry): Point2D | null {
   if (geometry.kind === "Point") {
     return geometry.points[0] ?? null;
   }
@@ -84,17 +110,15 @@ export function getLabelAnchor(geometry) {
     return firstLine[Math.floor(firstLine.length / 2)];
   }
 
-  if (geometry.kind === "Polygon") {
-    const outer = [...geometry.rings].sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))[0];
-    if (!outer || outer.length === 0) return null;
-    let x = 0;
-    let y = 0;
-    for (const point of outer) {
-      x += point.x;
-      y += point.y;
-    }
-    return { x: x / outer.length, y: y / outer.length };
+  const outer = [...geometry.rings].sort(
+    (a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a))
+  )[0];
+  if (!outer || outer.length === 0) return null;
+  let x = 0;
+  let y = 0;
+  for (const point of outer) {
+    x += point.x;
+    y += point.y;
   }
-
-  return null;
+  return { x: x / outer.length, y: y / outer.length };
 }

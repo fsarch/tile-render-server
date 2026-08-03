@@ -1,9 +1,26 @@
-const DEFAULT_STYLE = Object.freeze({
-  fill: "none",
-  stroke: "none",
-});
+type StyleValue = string | number;
+export type SvgStyle = Record<string, StyleValue>;
 
-export const LAYER_ORDER = Object.freeze([
+type LayerName =
+  | "water"
+  | "land"
+  | "landuse"
+  | "railways"
+  | "roads"
+  | "boundaries"
+  | "buildings"
+  | "places";
+
+type GeometryKind = "Polygon" | "LineString" | "Point";
+
+type LayerStyleDef = {
+  polygon?: SvgStyle;
+  line?: SvgStyle;
+  point?: SvgStyle;
+  text?: SvgStyle;
+};
+
+export const LAYER_ORDER: LayerName[] = [
   "water",
   "land",
   "landuse",
@@ -12,9 +29,9 @@ export const LAYER_ORDER = Object.freeze([
   "boundaries",
   "buildings",
   "places",
-]);
+];
 
-const SOURCE_LAYER_ALIASES = Object.freeze({
+const SOURCE_LAYER_ALIASES: Record<LayerName, string[]> = {
   water: ["water", "waterway"],
   land: ["land"],
   landuse: ["landuse", "landcover", "park"],
@@ -23,9 +40,9 @@ const SOURCE_LAYER_ALIASES = Object.freeze({
   boundaries: ["boundaries", "boundary"],
   buildings: ["buildings", "building"],
   places: ["places", "place"],
-});
+};
 
-const NATURE_LABEL_STYLES = Object.freeze({
+const NATURE_LABEL_STYLES = {
   water: {
     fill: "#2f6ea6",
     "font-size": 10,
@@ -48,9 +65,9 @@ const NATURE_LABEL_STYLES = Object.freeze({
     "stroke-width": 2.2,
     "stroke-linejoin": "round",
   },
-});
+} as const satisfies Record<string, SvgStyle>;
 
-const LAYER_STYLES = Object.freeze({
+const LAYER_STYLES: Record<LayerName, LayerStyleDef> = {
   water: {
     polygon: { fill: "#9ecfff", stroke: "none" },
     line: { stroke: "#7bb7ef", "stroke-width": 1, fill: "none" },
@@ -88,12 +105,6 @@ const LAYER_STYLES = Object.freeze({
       "stroke-linecap": "round",
       "stroke-linejoin": "round",
       fill: "none",
-      sleeper: {
-        fill: "#bdbdbd",
-        stroke: "#bdbdbd",
-        "stroke-width": 0.7,
-        "stroke-linecap": "round",
-      }
     },
   },
   buildings: {
@@ -125,9 +136,16 @@ const LAYER_STYLES = Object.freeze({
     line: { stroke: "#aacd95", "stroke-width": 1, fill: "none" },
     point: { fill: "#aacd95", stroke: "none", r: 1.4 },
   },
-});
+};
 
-const BASE_CLASS_BY_LAYER = Object.freeze({
+const RAIL_SLEEPER_STYLE: SvgStyle = {
+  fill: "#bdbdbd",
+  stroke: "#bdbdbd",
+  "stroke-width": 0.7,
+  "stroke-linecap": "round",
+};
+
+const BASE_CLASS_BY_LAYER: Record<LayerName, string> = {
   water: "water",
   land: "land",
   roads: "road",
@@ -136,16 +154,16 @@ const BASE_CLASS_BY_LAYER = Object.freeze({
   boundaries: "boundary",
   places: "place",
   landuse: "landuse",
-});
+};
 
-function clampNumber(value, fallback) {
+function clampNumber(value: unknown, fallback: number): number {
   if (typeof value !== "number" || Number.isNaN(value)) {
     return fallback;
   }
   return value;
 }
 
-function roadWidthFromClass(value, fallback) {
+function roadWidthFromClass(value: string, fallback: number): number {
   if (value === "motorway" || value === "trunk") return 2.9;
   if (value === "primary") return 2.4;
   if (value === "secondary") return 2.1;
@@ -156,7 +174,7 @@ function roadWidthFromClass(value, fallback) {
   return fallback;
 }
 
-const ROAD_VARIANT_STYLES = Object.freeze({
+const ROAD_VARIANT_STYLES: Record<string, SvgStyle> = {
   motorway: { stroke: "#f4a23c" },
   trunk: { stroke: "#f4a23c" },
   primary: { stroke: "#f7c948" },
@@ -167,10 +185,10 @@ const ROAD_VARIANT_STYLES = Object.freeze({
   unclassified: { stroke: "#ffffff" },
   service: { stroke: "#f2f2f2" },
   track: { stroke: "#d3c8b8", "stroke-dasharray": "2 1.5" },
-  path: { stroke: "#c8beaF", "stroke-dasharray": "2 1.5" },
-});
+  path: { stroke: "#c8beaf", "stroke-dasharray": "2 1.5" },
+};
 
-export function normalizeRoadClass(properties = {}) {
+export function normalizeRoadClass(properties: Record<string, unknown> = {}): string {
   const token = String(
     properties.class ?? properties.type ?? properties.subclass ?? properties.kind ?? ""
   )
@@ -182,7 +200,7 @@ export function normalizeRoadClass(properties = {}) {
   return token;
 }
 
-const LANDUSE_VARIANT_STYLES = Object.freeze({
+const LANDUSE_VARIANT_STYLES: Record<string, LayerStyleDef> = {
   urban: {
     polygon: { fill: "#ece6db", stroke: "none" },
     line: { stroke: "#d6cebf", "stroke-width": 1, fill: "none" },
@@ -213,15 +231,14 @@ const LANDUSE_VARIANT_STYLES = Object.freeze({
     line: { stroke: "#8fb784", "stroke-width": 1, fill: "none" },
     point: { fill: "#8fb784", stroke: "none", r: 1.4 },
   },
-});
+};
 
-function normalizeClassToken(properties = {}) {
-  const raw =
-    properties.class ?? properties.subclass ?? properties.type ?? properties.kind ?? "";
+function normalizeClassToken(properties: Record<string, unknown> = {}): string {
+  const raw = properties.class ?? properties.subclass ?? properties.type ?? properties.kind ?? "";
   return String(raw).trim().toLowerCase();
 }
 
-function getLanduseVariant(properties = {}) {
+function getLanduseVariant(properties: Record<string, unknown> = {}): string {
   const token = normalizeClassToken(properties);
   if (!token) return "default";
   if (
@@ -249,26 +266,21 @@ function getLanduseVariant(properties = {}) {
   ) {
     return "urban";
   }
-  if (token.includes("park") || token.includes("recreation")) {
-    return "park";
-  }
-  if (token.includes("pitch") || token.includes("garden") || token.includes("golf")) {
-    return "park";
-  }
-  if (token.includes("meadow")) {
-    return "meadow";
-  }
-  if (token.includes("grass")) {
-    return "grass";
-  }
+  if (token.includes("park") || token.includes("recreation")) return "park";
+  if (token.includes("pitch") || token.includes("garden") || token.includes("golf")) return "park";
+  if (token.includes("meadow")) return "meadow";
+  if (token.includes("grass")) return "grass";
   return "default";
 }
 
-export function isSupportedLayer(layerName) {
+export function isSupportedLayer(layerName: string): layerName is LayerName {
   return Object.hasOwn(LAYER_STYLES, layerName);
 }
 
-export function isFeatureAllowedForLayer(layerName, properties = {}) {
+export function isFeatureAllowedForLayer(
+  layerName: LayerName,
+  properties: Record<string, unknown> = {}
+): boolean {
   const roadClass = normalizeRoadClass(properties);
   if (layerName === "railways") {
     return roadClass === "rail";
@@ -279,21 +291,29 @@ export function isFeatureAllowedForLayer(layerName, properties = {}) {
   return true;
 }
 
-export function getLayerOrder() {
+export function getLayerOrder(): LayerName[] {
   return LAYER_ORDER;
 }
 
-export function getSourceLayerNames(layerName) {
+export function getSourceLayerNames(layerName: LayerName): string[] {
   return SOURCE_LAYER_ALIASES[layerName] ?? [layerName];
 }
 
-export function getNatureTextStyle(theme) {
+export function getNatureTextStyle(theme: "water" | "nature"): SvgStyle | null {
   const style = NATURE_LABEL_STYLES[theme];
   if (!style) return null;
   return { ...style };
 }
 
-export function getStyleForFeature(layerName, geometryKind, properties = {}) {
+export function getRailSleeperStyle(): SvgStyle {
+  return { ...RAIL_SLEEPER_STYLE };
+}
+
+export function getStyleForFeature(
+  layerName: LayerName,
+  geometryKind: GeometryKind,
+  properties: Record<string, unknown> = {}
+): SvgStyle | null {
   const styleSet = LAYER_STYLES[layerName];
   if (!styleSet) return null;
 
@@ -305,7 +325,7 @@ export function getStyleForFeature(layerName, geometryKind, properties = {}) {
         : styleSet.point;
 
   if (!byGeometry) return null;
-  const style = { ...byGeometry };
+  const style: SvgStyle = { ...byGeometry };
 
   if (layerName === "roads" && geometryKind === "LineString") {
     const roadClass = normalizeRoadClass(properties);
@@ -338,19 +358,22 @@ export function getStyleForFeature(layerName, geometryKind, properties = {}) {
   return style;
 }
 
-export function getTextStyleForLayer(layerName) {
+export function getTextStyleForLayer(layerName: LayerName): SvgStyle | null {
   const styleSet = LAYER_STYLES[layerName];
   if (!styleSet || !styleSet.text) return null;
   return { ...styleSet.text };
 }
 
-function sanitizeClassToken(token) {
+function sanitizeClassToken(token: unknown): string {
   if (typeof token !== "string") return "";
   return token.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
 }
 
-export function buildFeatureClasses(layerName, properties = {}) {
-  const tokens = [];
+export function buildFeatureClasses(
+  layerName: LayerName,
+  properties: Record<string, unknown> = {}
+): string {
+  const tokens: string[] = [];
   const base = BASE_CLASS_BY_LAYER[layerName];
   if (base) tokens.push(base);
 

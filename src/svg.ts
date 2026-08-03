@@ -1,6 +1,7 @@
-import { getLayerOrder } from "./styles.js";
+import type { NormalizedGeometry, Point2D } from "./geometry.js";
+import { getLayerOrder, type SvgStyle } from "./styles.js";
 
-function escapeXml(value) {
+function escapeXml(value: unknown): string {
   return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -8,19 +9,19 @@ function escapeXml(value) {
     .replaceAll('"', "&quot;");
 }
 
-function formatNumber(value) {
+function formatNumber(value: number): string {
   if (!Number.isFinite(value)) return "0";
   return Number(value.toFixed(2)).toString();
 }
 
-function attributesToString(attributes = {}) {
+function attributesToString(attributes: Record<string, unknown> = {}): string {
   return Object.entries(attributes)
     .filter(([, value]) => value !== undefined && value !== null && value !== "")
     .map(([key, value]) => `${key}="${escapeXml(value)}"`)
     .join(" ");
 }
 
-function lineToPath(line, close = false) {
+function lineToPath(line: Point2D[], close = false): string {
   if (!Array.isArray(line) || line.length === 0) return "";
   const first = line[0];
   const segments = [`M ${formatNumber(first.x)} ${formatNumber(first.y)}`];
@@ -33,12 +34,16 @@ function lineToPath(line, close = false) {
   return segments.join(" ");
 }
 
-export function lineToPathData(line) {
+export function lineToPathData(line: Point2D[]): string {
   return lineToPath(line, false);
 }
 
-export function renderGeometryElements(geometry, style, className) {
-  const baseAttributes = {
+export function renderGeometryElements(
+  geometry: NormalizedGeometry,
+  style: SvgStyle,
+  className: string
+): string[] {
+  const baseAttributes: Record<string, unknown> = {
     ...style,
     class: className || undefined,
   };
@@ -61,40 +66,39 @@ export function renderGeometryElements(geometry, style, className) {
       .map((d) => `<path ${attributesToString({ ...baseAttributes, d })} />`);
   }
 
-  if (geometry.kind === "Point") {
-    const radius = style.r ?? 2;
-    const circleStyle = { ...baseAttributes };
-    delete circleStyle.r;
-    return geometry.points.map(
-      (point) =>
-        `<circle ${attributesToString({
-          ...circleStyle,
-          cx: formatNumber(point.x),
-          cy: formatNumber(point.y),
-          r: formatNumber(radius),
-        })} />`
-    );
-  }
-
-  return [];
+  const radius = typeof style.r === "number" ? style.r : 2;
+  const circleStyle = { ...baseAttributes };
+  delete circleStyle.r;
+  return geometry.points.map(
+    (point) =>
+      `<circle ${attributesToString({
+        ...circleStyle,
+        cx: formatNumber(point.x),
+        cy: formatNumber(point.y),
+        r: formatNumber(radius),
+      })} />`
+  );
 }
 
-export function renderRailwayElements(geometry, styleArg, className) {
-  const { sleeper, ...style } = styleArg;
-
+export function renderRailwayElements(
+  geometry: NormalizedGeometry,
+  railStyle: SvgStyle,
+  sleeperStyle: SvgStyle,
+  className: string
+): string[] {
   if (geometry.kind !== "LineString") {
-    return renderGeometryElements(geometry, style, className);
+    return renderGeometryElements(geometry, railStyle, className);
   }
 
-  const output = [];
-  const sleeperSegments = [];
+  const output: string[] = [];
+  const sleeperSegments: string[] = [];
   const sleeperSpacing = 8;
   const sleeperHalfLength = 2;
 
   for (const line of geometry.lines) {
     const d = lineToPath(line, false);
     if (d) {
-      output.push(`<path ${attributesToString({ ...style, class: className || undefined, d })} />`);
+      output.push(`<path ${attributesToString({ ...railStyle, class: className || undefined, d })} />`);
     }
 
     if (!Array.isArray(line) || line.length < 2) continue;
@@ -128,19 +132,25 @@ export function renderRailwayElements(geometry, styleArg, className) {
   }
 
   if (sleeperSegments.length > 0) {
-    const sleeperAttrs = attributesToString({
-      ...sleeper,
-      class: className ? `${className} rail-sleeper` : "rail-sleeper",
-      d: sleeperSegments.join(" "),
-    });
-    output.push(`<path ${sleeperAttrs} />`);
+    output.push(
+      `<path ${attributesToString({
+        ...sleeperStyle,
+        class: className ? `${className} rail-sleeper` : "rail-sleeper",
+        d: sleeperSegments.join(" "),
+      })} />`
+    );
   }
 
   return output;
 }
 
-export function renderLabelElement(anchor, text, className, textStyle = {}) {
-  if (!anchor || typeof text !== "string" || text.trim().length === 0) return "";
+export function renderLabelElement(
+  anchor: Point2D | null,
+  text: string,
+  className: string,
+  textStyle: SvgStyle = {}
+): string {
+  if (!anchor || text.trim().length === 0) return "";
   return `<text ${attributesToString({
     ...textStyle,
     class: className || undefined,
@@ -149,9 +159,14 @@ export function renderLabelElement(anchor, text, className, textStyle = {}) {
   })}>${escapeXml(text)}</text>`;
 }
 
-export function renderLineLabelElement(pathId, pathData, text, className, textStyle = {}) {
-  if (!pathId || !pathData || typeof text !== "string" || text.trim().length === 0) return "";
-
+export function renderLineLabelElement(
+  pathId: string,
+  pathData: string,
+  text: string,
+  className: string,
+  textStyle: SvgStyle = {}
+): string {
+  if (!pathId || !pathData || text.trim().length === 0) return "";
   const hiddenPath = `<path ${attributesToString({
     id: pathId,
     d: pathData,
@@ -165,13 +180,10 @@ export function renderLineLabelElement(pathId, pathData, text, className, textSt
   return `${hiddenPath}<text ${textAttrs}><textPath href="#${escapeXml(pathId)}" startOffset="50%">${escapeXml(text)}</textPath></text>`;
 }
 
-export function buildSvgDocument(groups) {
+export function buildSvgDocument(groups: Map<string, string>): string {
   const ordered = getLayerOrder();
   const layerContent = ordered
-    .map((layerName) => {
-      const inner = groups.get(layerName) ?? "";
-      return `<g id="${layerName}">${inner}</g>`;
-    })
+    .map((layerName) => `<g id="${layerName}">${groups.get(layerName) ?? ""}</g>`)
     .join("");
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">${layerContent}</svg>\n`;

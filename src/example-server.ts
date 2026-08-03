@@ -1,10 +1,12 @@
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import minimist from "minimist";
 
-const MIME_TYPES = {
+type MimeTypeMap = Record<string, string>;
+
+const MIME_TYPES: MimeTypeMap = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
@@ -13,17 +15,27 @@ const MIME_TYPES = {
   ".txt": "text/plain; charset=utf-8",
 };
 
-function getMimeType(path) {
+interface ServerOptions {
+  outputDir: string;
+  port: number;
+  host: string;
+}
+
+interface NodeErrorWithCode {
+  code?: string;
+}
+
+function getMimeType(path: string): string {
   return MIME_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
 }
 
-function isInside(base, target) {
+function isInside(base: string, target: string): boolean {
   const relBase = resolve(base);
   const relTarget = resolve(target);
   return relTarget === relBase || relTarget.startsWith(`${relBase}/`);
 }
 
-function parseArgs() {
+function parseArgs(): ServerOptions {
   const args = minimist(process.argv.slice(2), {
     default: {
       output: "output",
@@ -34,7 +46,7 @@ function parseArgs() {
   });
 
   if (args.help) {
-    console.log(`Usage: node src/example-server.js [options]
+    console.log(`Usage: node dist/example-server.js [options]
 
 --output <dir>   Tile output directory (default: output)
 --port <number>  Port for the example server (default: 4173)
@@ -56,7 +68,7 @@ function parseArgs() {
   };
 }
 
-async function sendFile(res, path) {
+async function sendFile(res: ServerResponse, path: string): Promise<void> {
   const fileStat = await stat(path);
   if (!fileStat.isFile()) {
     res.statusCode = 404;
@@ -71,7 +83,7 @@ async function sendFile(res, path) {
   res.end(body);
 }
 
-function notFound(res) {
+function notFound(res: ServerResponse): void {
   res.statusCode = 404;
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.end("Not found");
@@ -82,10 +94,10 @@ const srcDir = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const projectRoot = resolve(srcDir, "..");
 const exampleDir = resolve(projectRoot, "example");
 
-const server = createServer(async (req, res) => {
+const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
   try {
     const rawUrl = req.url ?? "/";
-    const pathOnly = rawUrl.split("?")[0];
+    const pathOnly = rawUrl.split("?")[0] ?? "/";
     const decodedPath = decodeURIComponent(pathOnly);
 
     if (decodedPath === "/" || decodedPath === "/index.html") {
@@ -116,7 +128,8 @@ const server = createServer(async (req, res) => {
 
     notFound(res);
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+    const maybeError = error as NodeErrorWithCode;
+    if (maybeError && maybeError.code === "ENOENT") {
       notFound(res);
       return;
     }
@@ -131,4 +144,3 @@ server.listen(options.port, options.host, () => {
     `Example server running at http://${options.host}:${options.port} (tiles from ${options.outputDir})`
   );
 });
-

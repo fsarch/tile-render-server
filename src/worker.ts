@@ -4,16 +4,37 @@ import { parentPort, workerData } from "node:worker_threads";
 import { openPMTilesArchive } from "./pmtiles.js";
 import { renderTileToSvg } from "./renderer.js";
 
+interface WorkerConfig {
+  inputPath: string;
+  labels: boolean;
+  roadLabels: boolean;
+  natureLabels: boolean;
+}
+
+interface CloseMessage {
+  type: "close";
+}
+
+interface TileJobMessage {
+  type: "render";
+  z: number;
+  x: number;
+  y: number;
+  outputPath: string;
+  overwrite: boolean;
+}
+
+type JobMessage = CloseMessage | TileJobMessage;
+
 if (!parentPort) {
   throw new Error("Worker requires a parentPort");
 }
+const port = parentPort;
 
-const archive = await openPMTilesArchive(workerData.inputPath);
-const renderLabels = Boolean(workerData.labels);
-const renderRoadLabels = Boolean(workerData.roadLabels);
-const renderNatureLabels = Boolean(workerData.natureLabels);
+const config = workerData as WorkerConfig;
+const archive = await openPMTilesArchive(config.inputPath);
 
-async function exists(path) {
+async function exists(path: string): Promise<boolean> {
   try {
     await access(path);
     return true;
@@ -22,45 +43,44 @@ async function exists(path) {
   }
 }
 
-parentPort.on("message", async (job) => {
-  if (job?.type === "close") {
+port.on("message", async (job: JobMessage) => {
+  if ("type" in job && job.type === "close") {
     await archive.close();
-    parentPort.postMessage({ type: "closed" });
+    port.postMessage({ type: "closed" });
     return;
   }
 
   const { z, x, y, outputPath, overwrite } = job;
-
   try {
     if (!overwrite && (await exists(outputPath))) {
-      parentPort.postMessage({ type: "result", status: "skipped", z, x, y, reason: "exists" });
+      port.postMessage({ type: "result", status: "skipped", z, x, y, reason: "exists" });
       return;
     }
 
     const tileData = await archive.getTile(z, x, y);
     if (!tileData || tileData.byteLength === 0) {
-      parentPort.postMessage({ type: "result", status: "skipped", z, x, y, reason: "empty" });
+      port.postMessage({ type: "result", status: "skipped", z, x, y, reason: "empty" });
       return;
     }
 
     const svg = renderTileToSvg(tileData, {
-      labels: renderLabels,
-      roadLabels: renderRoadLabels,
-      natureLabels: renderNatureLabels,
+      labels: config.labels,
+      roadLabels: config.roadLabels,
+      natureLabels: config.natureLabels,
       zoom: z,
       tileX: x,
       tileY: y,
     });
     if (!svg) {
-      parentPort.postMessage({ type: "result", status: "skipped", z, x, y, reason: "invalid" });
+      port.postMessage({ type: "result", status: "skipped", z, x, y, reason: "invalid" });
       return;
     }
 
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, svg, "utf8");
-    parentPort.postMessage({ type: "result", status: "rendered", z, x, y });
+    port.postMessage({ type: "result", status: "rendered", z, x, y });
   } catch (error) {
-    parentPort.postMessage({
+    port.postMessage({
       type: "result",
       status: "error",
       z,

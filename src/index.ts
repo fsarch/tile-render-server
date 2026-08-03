@@ -2,15 +2,42 @@ import { cpus } from "node:os";
 import { resolve } from "node:path";
 import { Worker } from "node:worker_threads";
 import minimist from "minimist";
-import { openPMTilesArchive } from "./pmtiles.js";
+import { openPMTilesArchive, type TileCoord } from "./pmtiles.js";
 
-function parseCli() {
+interface CliOptions {
+  input: string;
+  output: string;
+  maxZoom: number;
+  concurrency: number;
+  overwrite: boolean;
+  labels: boolean;
+  roadLabels: boolean;
+  natureLabels: boolean;
+}
+
+interface WorkerResultMessage {
+  type: "result";
+  status: "rendered" | "skipped" | "error";
+  z: number;
+  x: number;
+  y: number;
+  reason?: string;
+  error?: string;
+}
+
+interface WorkerClosedMessage {
+  type: "closed";
+}
+
+type WorkerMessage = WorkerResultMessage | WorkerClosedMessage;
+
+function parseCli(): CliOptions {
   const args = minimist(process.argv.slice(2), {
     boolean: ["overwrite", "labels", "road-labels", "nature-labels", "help"],
     default: {
       input: "planet.pmtiles",
       output: "output",
-      "max-zoom": 19,
+      "max-zoom": 14,
       concurrency: Math.max(1, Math.min(8, cpus().length)),
       overwrite: false,
       labels: false,
@@ -20,7 +47,7 @@ function parseCli() {
   });
 
   if (args.help) {
-    console.log(`Usage: node src/index.js [options]
+    console.log(`Usage: node dist/index.js [options]
 
 --input <path>        PMTiles input file (default: planet.pmtiles)
 --output <dir>        Output directory root (default: output)
@@ -56,7 +83,7 @@ function parseCli() {
   };
 }
 
-function formatEta(seconds) {
+function formatEta(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "--:--:--";
   const total = Math.round(seconds);
   const h = Math.floor(total / 3600)
@@ -71,14 +98,13 @@ function formatEta(seconds) {
   return `${h}:${m}:${s}`;
 }
 
-function createWorker(inputPath, labels, roadLabels, natureLabels) {
+function createWorker(inputPath: string, labels: boolean, roadLabels: boolean, natureLabels: boolean): Worker {
   return new Worker(new URL("./worker.js", import.meta.url), {
-    type: "module",
     workerData: { inputPath, labels, roadLabels, natureLabels },
   });
 }
 
-async function main() {
+async function main(): Promise<void> {
   const cli = parseCli();
   const archive = await openPMTilesArchive(cli.input);
   const header = archive.getHeader();
@@ -106,8 +132,8 @@ async function main() {
   }
 
   const workerCount = Math.min(cli.concurrency, totalTiles);
-  const workers = [];
-  const freeWorkers = [];
+  const workers: Worker[] = [];
+  const freeWorkers: Worker[] = [];
   const stats = {
     rendered: 0,
     skipped: 0,
@@ -116,14 +142,13 @@ async function main() {
     currentZoom: 0,
   };
   const start = Date.now();
-
   let inflight = 0;
-  let resolveFreeWaiter = null;
-  let resolveDrained = null;
-  let fatalError = null;
-  const activeJobs = new Map();
+  let resolveFreeWaiter: (() => void) | null = null;
+  let resolveDrained: (() => void) | null = null;
+  let fatalError: Error | null = null;
+  const activeJobs = new Map<Worker, TileCoord>();
 
-  const wakeFree = () => {
+  const wakeFree = (): void => {
     if (resolveFreeWaiter) {
       const done = resolveFreeWaiter;
       resolveFreeWaiter = null;
@@ -131,7 +156,7 @@ async function main() {
     }
   };
 
-  const markDone = (z) => {
+  const markDone = (z: number): void => {
     stats.done += 1;
     stats.currentZoom = z;
     if (inflight > 0) inflight -= 1;
@@ -143,34 +168,24 @@ async function main() {
   };
 
   for (let i = 0; i < workerCount; i += 1) {
-    const worker = createWorker(
-      cli.input,
-      cli.labels,
-      cli.roadLabels,
-      cli.natureLabels
-    );
-    worker.on("message", (message) => {
-      if (message?.type === "closed") {
-        return;
+    const worker = createWorker(cli.input, cli.labels, cli.roadLabels, cli.natureLabels);
+    worker.on("message", (message: WorkerMessage) => {
+      if (message.type === "closed") return;
+      if (message.status === "rendered") {
+        stats.rendered += 1;
+      } else if (message.status === "error") {
+        stats.errors += 1;
+        console.error(`Fehler z${message.z}/${message.x}/${message.y}: ${message.error ?? "unbekannt"}`);
+      } else {
+        stats.skipped += 1;
       }
-      if (message?.type === "result") {
-        if (message.status === "rendered") stats.rendered += 1;
-        else if (message.status === "error") {
-          stats.errors += 1;
-          console.error(
-            `Fehler z${message.z}/${message.x}/${message.y}: ${message.error ?? "unbekannt"}`
-          );
-        } else {
-          stats.skipped += 1;
-        }
-        activeJobs.delete(worker);
-        markDone(message.z ?? stats.currentZoom);
-      }
+      activeJobs.delete(worker);
+      markDone(message.z ?? stats.currentZoom);
       freeWorkers.push(worker);
       wakeFree();
     });
 
-    worker.on("error", (error) => {
+    worker.on("error", (error: Error) => {
       stats.errors += 1;
       console.error(`Worker-Fehler: ${error.message}`);
       const active = activeJobs.get(worker);
@@ -196,25 +211,23 @@ async function main() {
     );
   }, 1000);
 
-  const waitForFreeWorker = async () => {
+  const waitForFreeWorker = async (): Promise<void> => {
     if (freeWorkers.length > 0) return;
-    await new Promise((resolvePromise) => {
+    await new Promise<void>((resolvePromise) => {
       resolveFreeWaiter = resolvePromise;
     });
   };
 
   for await (const coord of archive.iterateTileCoords(effectiveMaxZoom)) {
-    if (fatalError) {
-      throw fatalError;
-    }
+    if (fatalError) throw fatalError;
     await waitForFreeWorker();
-    if (fatalError) {
-      throw fatalError;
-    }
+    if (fatalError) throw fatalError;
     const worker = freeWorkers.pop();
+    if (!worker) throw new Error("No worker available");
     activeJobs.set(worker, coord);
     inflight += 1;
     worker.postMessage({
+      type: "render",
       ...coord,
       outputPath: resolve(cli.output, String(coord.z), String(coord.x), `${coord.y}.svg`),
       overwrite: cli.overwrite,
@@ -222,7 +235,7 @@ async function main() {
   }
 
   if (stats.done < totalTiles) {
-    await new Promise((resolvePromise) => {
+    await new Promise<void>((resolvePromise) => {
       resolveDrained = resolvePromise;
     });
   }
@@ -233,7 +246,7 @@ async function main() {
   await Promise.all(
     workers.map(
       (worker) =>
-        new Promise((resolvePromise) => {
+        new Promise<void>((resolvePromise) => {
           worker.once("exit", () => resolvePromise());
           worker.postMessage({ type: "close" });
           setTimeout(() => {
@@ -250,7 +263,7 @@ async function main() {
   );
 }
 
-main().catch((error) => {
+main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 });

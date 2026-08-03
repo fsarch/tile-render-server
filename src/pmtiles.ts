@@ -1,17 +1,23 @@
-import { open } from "node:fs/promises";
-import { PMTiles, tileIdToZxy } from "pmtiles";
+import { open, type FileHandle } from "node:fs/promises";
+import { PMTiles, tileIdToZxy, type Entry, type Header, type RangeResponse, type Source } from "pmtiles";
 
-class NodeFileSource {
-  constructor(filePath, handle) {
-    this.filePath = filePath;
-    this.handle = handle;
-  }
+export interface TileCoord {
+  z: number;
+  x: number;
+  y: number;
+}
 
-  getKey() {
+class NodeFileSource implements Source {
+  constructor(
+    private readonly filePath: string,
+    private readonly handle: FileHandle
+  ) {}
+
+  getKey(): string {
     return this.filePath;
   }
 
-  async getBytes(offset, length) {
+  async getBytes(offset: number, length: number): Promise<RangeResponse> {
     const buffer = Buffer.allocUnsafe(length);
     const { bytesRead } = await this.handle.read(buffer, 0, length, offset);
     if (bytesRead !== length) {
@@ -26,10 +32,16 @@ class NodeFileSource {
   }
 }
 
-async function* iterateRunEntries(archive, header, directoryOffset, directoryLength) {
+async function* iterateRunEntries(
+  archive: PMTiles,
+  header: Header,
+  directoryOffset: number,
+  directoryLength: number
+): AsyncGenerator<Entry> {
   const stack = [{ offset: directoryOffset, length: directoryLength }];
   while (stack.length > 0) {
     const current = stack.pop();
+    if (!current) break;
     const entries = await archive.cache.getDirectory(
       archive.source,
       current.offset,
@@ -52,23 +64,26 @@ async function* iterateRunEntries(archive, header, directoryOffset, directoryLen
 }
 
 export class LocalPMTilesArchive {
-  constructor(filePath, fileHandle, archive, header) {
-    this.filePath = filePath;
-    this.fileHandle = fileHandle;
-    this.archive = archive;
-    this.header = header;
-  }
+  constructor(
+    private readonly fileHandle: FileHandle,
+    private readonly archive: PMTiles,
+    private readonly header: Header
+  ) {}
 
-  getHeader() {
+  getHeader(): Header {
     return this.header;
   }
 
-  async getTile(z, x, y) {
+  async getMetadata(): Promise<unknown> {
+    return this.archive.getMetadata();
+  }
+
+  async getTile(z: number, x: number, y: number): Promise<ArrayBuffer | undefined> {
     const response = await this.archive.getZxy(z, x, y);
     return response?.data;
   }
 
-  async countTiles(maxZoom) {
+  async countTiles(maxZoom: number): Promise<number> {
     const cappedZoom = Math.min(maxZoom, this.header.maxZoom);
     let total = 0;
     for await (const entry of iterateRunEntries(
@@ -85,7 +100,7 @@ export class LocalPMTilesArchive {
     return total;
   }
 
-  async *iterateTileCoords(maxZoom) {
+  async *iterateTileCoords(maxZoom: number): AsyncGenerator<TileCoord> {
     const cappedZoom = Math.min(maxZoom, this.header.maxZoom);
     for await (const entry of iterateRunEntries(
       this.archive,
@@ -102,15 +117,15 @@ export class LocalPMTilesArchive {
     }
   }
 
-  async close() {
+  async close(): Promise<void> {
     await this.fileHandle.close();
   }
 }
 
-export async function openPMTilesArchive(filePath) {
+export async function openPMTilesArchive(filePath: string): Promise<LocalPMTilesArchive> {
   const fileHandle = await open(filePath, "r");
   const source = new NodeFileSource(filePath, fileHandle);
   const archive = new PMTiles(source);
   const header = await archive.getHeader();
-  return new LocalPMTilesArchive(filePath, fileHandle, archive, header);
+  return new LocalPMTilesArchive(fileHandle, archive, header);
 }
