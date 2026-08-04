@@ -231,6 +231,46 @@ const LANDUSE_VARIANT_STYLES: Record<string, LayerStyleDef> = {
     line: { stroke: "#8fb784", "stroke-width": 1, fill: "none" },
     point: { fill: "#8fb784", stroke: "none", r: 1.4 },
   },
+  bare: {
+    polygon: { fill: "#ddd7cb", stroke: "none" },
+    line: { stroke: "#c5bdaf", "stroke-width": 1, fill: "none" },
+    point: { fill: "#c5bdaf", stroke: "none", r: 1.4 },
+  },
+  sand: {
+    polygon: { fill: "#efe3bf", stroke: "none" },
+    line: { stroke: "#d9c999", "stroke-width": 1, fill: "none" },
+    point: { fill: "#d9c999", stroke: "none", r: 1.4 },
+  },
+  scrub: {
+    polygon: { fill: "#c8d7b5", stroke: "none" },
+    line: { stroke: "#a8bc93", "stroke-width": 1, fill: "none" },
+    point: { fill: "#a8bc93", stroke: "none", r: 1.4 },
+  },
+  wetland: {
+    polygon: { fill: "#bfdcc8", stroke: "none" },
+    line: { stroke: "#98bfa7", "stroke-width": 1, fill: "none" },
+    point: { fill: "#98bfa7", stroke: "none", r: 1.4 },
+  },
+  ice: {
+    polygon: { fill: "#e8f2f8", stroke: "none" },
+    line: { stroke: "#c8dae8", "stroke-width": 1, fill: "none" },
+    point: { fill: "#c8dae8", stroke: "none", r: 1.4 },
+  },
+  rock: {
+    polygon: { fill: "#cec9c2", stroke: "none" },
+    line: { stroke: "#b5aea4", "stroke-width": 1, fill: "none" },
+    point: { fill: "#b5aea4", stroke: "none", r: 1.4 },
+  },
+  heath: {
+    polygon: { fill: "#d8ccba", stroke: "none" },
+    line: { stroke: "#bfae99", "stroke-width": 1, fill: "none" },
+    point: { fill: "#bfae99", stroke: "none", r: 1.4 },
+  },
+  shrub: {
+    polygon: { fill: "#cadab8", stroke: "none" },
+    line: { stroke: "#a9be95", "stroke-width": 1, fill: "none" },
+    point: { fill: "#a9be95", stroke: "none", r: 1.4 },
+  },
 };
 
 function normalizeClassToken(properties: Record<string, unknown> = {}): string {
@@ -270,6 +310,41 @@ function getLanduseVariant(properties: Record<string, unknown> = {}): string {
   if (token.includes("pitch") || token.includes("garden") || token.includes("golf")) return "park";
   if (token.includes("meadow")) return "meadow";
   if (token.includes("grass")) return "grass";
+  if (
+    token.includes("wetland") ||
+    token.includes("marsh") ||
+    token.includes("swamp") ||
+    token.includes("bog") ||
+    token.includes("reed")
+  ) {
+    return "wetland";
+  }
+  if (
+    token.includes("glacier") ||
+    token.includes("ice") ||
+    token.includes("snow")
+  ) {
+    return "ice";
+  }
+  if (
+    token.includes("beach") ||
+    token.includes("sand") ||
+    token.includes("dune")
+  ) {
+    return "sand";
+  }
+  if (
+    token.includes("bare_rock") ||
+    token.includes("rock") ||
+    token.includes("scree") ||
+    token.includes("cliff")
+  ) {
+    return "rock";
+  }
+  if (token.includes("bare") || token.includes("barren")) return "bare";
+  if (token.includes("scrub") || token.includes("bush")) return "scrub";
+  if (token.includes("heath") || token.includes("moor")) return "heath";
+  if (token.includes("shrub") || token.includes("shrubland")) return "shrub";
   return "default";
 }
 
@@ -382,15 +457,36 @@ function placeClassBaseSize(placeClass: string): number {
   return 9;
 }
 
+function shouldSuppressPlaceLabel(properties: Record<string, unknown>): boolean {
+  const tokens = [
+    String(properties.class ?? "").toLowerCase(),
+    String(properties.subclass ?? "").toLowerCase(),
+    String(properties.kind ?? "").toLowerCase(),
+    String(properties.type ?? "").toLowerCase(),
+  ];
+  return tokens.some((token) =>
+    token === "state" ||
+    token === "province" ||
+    token === "region" ||
+    token === "federal_state" ||
+    token === "federal-state" ||
+    token === "bundesland"
+  );
+}
+
 export function getTextStyleForFeature(
   layerName: LayerName,
-  properties: Record<string, unknown> = {}
+  properties: Record<string, unknown> = {},
+  zoom?: number
 ): SvgStyle | null {
   const base = getTextStyleForLayer(layerName);
   if (!base) return null;
 
   if (layerName !== "places") {
     return base;
+  }
+  if (shouldSuppressPlaceLabel(properties)) {
+    return null;
   }
 
   const placeClass = String(properties.class ?? "").toLowerCase();
@@ -413,6 +509,9 @@ export function getTextStyleForFeature(
   }
 
   const fontSize = Math.max(8, Math.min(18, size));
+  if (Number.isInteger(zoom) && (zoom ?? 0) <= 13 && fontSize <= 10) {
+    return null;
+  }
   const strokeWidth = Number(Math.max(1.8, fontSize * 0.2).toFixed(2));
 
   return {

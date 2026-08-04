@@ -298,7 +298,8 @@ function renderLayerFeatures(
   groups: Map<string, string>,
   tile: VectorTile,
   layerName: ReturnType<typeof getLayerOrder>[number],
-  renderLabels: boolean
+  renderLabels: boolean,
+  zoomLevel: number | undefined
 ): void {
   const fragments: string[] = [];
   for (const sourceLayerName of getSourceLayerNames(layerName)) {
@@ -312,6 +313,14 @@ function renderLayerFeatures(
       const geometry = decodeFeatureGeometry(feature, layerExtent);
       if (!geometry) continue;
       if (!isFeatureAllowedForLayer(layerName, properties)) continue;
+      const labelText = getFeatureLabel(properties);
+      const textStyle =
+        renderLabels && labelText ? getTextStyleForFeature(layerName, properties, zoomLevel) : null;
+      const hidePlacePoint =
+        layerName === "places" &&
+        geometry.kind === "Point" &&
+        (!renderLabels || !labelText || !textStyle);
+      if (hidePlacePoint) continue;
 
       const className = buildFeatureClasses(layerName, properties);
       const style = getStyleForFeature(layerName, geometry.kind, properties);
@@ -323,10 +332,7 @@ function renderLayerFeatures(
         fragments.push(...renderGeometryElements(geometry, style, className));
       }
 
-      const labelText = getFeatureLabel(properties);
-      if (renderLabels && labelText) {
-        const textStyle = getTextStyleForFeature(layerName, properties);
-        if (!textStyle) continue;
+      if (renderLabels && labelText && textStyle) {
         const anchor = getLabelAnchor(geometry);
         const text = renderLabelElement(anchor, labelText, className, textStyle);
         if (text) fragments.push(text);
@@ -405,7 +411,7 @@ export function renderTileToSvg(
 
   for (const layerName of getLayerOrder()) {
     if (!isSupportedLayer(layerName)) continue;
-    renderLayerFeatures(groups, tile, layerName, renderLabels);
+    renderLayerFeatures(groups, tile, layerName, renderLabels, zoomLevel);
 
     if (layerName === "roads" && renderRoadLabelsEnabled) {
       const existing = groups.get("roads") ?? "";
