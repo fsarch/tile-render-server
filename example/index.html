@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PMTiles SVG Example</title>
+    <title>PMTiles SVG API Example</title>
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -16,7 +16,9 @@
     <div id="app">
       <header class="panel">
         <h1>SVG Tile Example</h1>
-        <p>Quelle: <code>/tiles/{z}/{x}/{y}.svg</code></p>
+        <p>Quelle: <code>/v1/tiles/{z}/{x}/{y}.svg</code></p>
+        <p>Optional: <code>?apiBase=http://127.0.0.1:3000</code></p>
+        <p>Zoom und Position bleiben im URL-Hash erhalten.</p>
       </header>
       <div id="map"></div>
     </div>
@@ -28,4 +30,3 @@
     <script src="/app.js"></script>
   </body>
 </html>
-

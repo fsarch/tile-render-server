@@ -474,6 +474,34 @@ function shouldSuppressPlaceLabel(properties: Record<string, unknown>): boolean 
   );
 }
 
+function shouldSuppressLowZoomPlaceLabel(
+  placeClass: string,
+  rank: number | null,
+  population: number | null,
+  capital: number | null,
+  zoom?: number
+): boolean {
+  if (!Number.isInteger(zoom) || (zoom ?? 0) > 9) {
+    return false;
+  }
+
+  if (placeClass === "village" || placeClass === "suburb") {
+    return true;
+  }
+
+  if (placeClass !== "town") {
+    return false;
+  }
+
+  if (capital !== null && capital > 0) {
+    return false;
+  }
+
+  const isHighRank = rank !== null && rank <= 6;
+  const isLargeEnough = population !== null && population >= 100_000;
+  return !isHighRank && !isLargeEnough;
+}
+
 export function getTextStyleForFeature(
   layerName: LayerName,
   properties: Record<string, unknown> = {},
@@ -493,6 +521,9 @@ export function getTextStyleForFeature(
   const rank = toNumberOrNull(properties.rank);
   const population = toNumberOrNull(properties.population);
   const capital = toNumberOrNull(properties.capital);
+  if (shouldSuppressLowZoomPlaceLabel(placeClass, rank, population, capital, zoom)) {
+    return null;
+  }
 
   let size = placeClassBaseSize(placeClass);
 

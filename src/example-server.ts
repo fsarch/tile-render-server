@@ -17,6 +17,7 @@ const MIME_TYPES: MimeTypeMap = {
 
 interface ServerOptions {
   outputDir: string;
+  apiBaseUrl: string;
   port: number;
   host: string;
 }
@@ -39,6 +40,7 @@ function parseArgs(): ServerOptions {
   const args = minimist(process.argv.slice(2), {
     default: {
       output: "output",
+      "api-base": "http://127.0.0.1:3000",
       port: 4173,
       host: "127.0.0.1",
     },
@@ -49,6 +51,7 @@ function parseArgs(): ServerOptions {
     console.log(`Usage: node dist/example-server.js [options]
 
 --output <dir>   Tile output directory (default: output)
+--api-base <url> API base URL for on-demand tiles (default: http://127.0.0.1:3000)
 --port <number>  Port for the example server (default: 4173)
 --host <host>    Host for the example server (default: 127.0.0.1)
 --help           Show this help
@@ -63,6 +66,7 @@ function parseArgs(): ServerOptions {
 
   return {
     outputDir: resolve(String(args.output)),
+    apiBaseUrl: String(args["api-base"]).replace(/\/+$/, ""),
     port,
     host: String(args.host),
   };
@@ -80,6 +84,21 @@ async function sendFile(res: ServerResponse, path: string): Promise<void> {
   res.statusCode = 200;
   res.setHeader("Content-Type", getMimeType(path));
   res.setHeader("Cache-Control", "no-cache");
+  res.end(body);
+}
+
+async function proxyTile(res: ServerResponse, apiBaseUrl: string, path: string): Promise<void> {
+  const upstream = await fetch(`${apiBaseUrl}${path}`);
+  const body = Buffer.from(await upstream.arrayBuffer());
+  res.statusCode = upstream.status;
+  const contentType = upstream.headers.get("content-type");
+  if (contentType) {
+    res.setHeader("Content-Type", contentType);
+  }
+  const cacheControl = upstream.headers.get("cache-control");
+  if (cacheControl) {
+    res.setHeader("Cache-Control", cacheControl);
+  }
   res.end(body);
 }
 
@@ -126,6 +145,11 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
       return;
     }
 
+    if (decodedPath.startsWith("/v1/tiles/")) {
+      await proxyTile(res, options.apiBaseUrl, decodedPath);
+      return;
+    }
+
     notFound(res);
   } catch (error) {
     const maybeError = error as NodeErrorWithCode;
@@ -141,6 +165,6 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
 
 server.listen(options.port, options.host, () => {
   console.log(
-    `Example server running at http://${options.host}:${options.port} (tiles from ${options.outputDir})`
+    `Example server running at http://${options.host}:${options.port} (api ${options.apiBaseUrl})`
   );
 });
