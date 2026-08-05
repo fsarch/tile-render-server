@@ -125,11 +125,6 @@ function shouldRenderNatureAreaLabel(geometry: NormalizedGeometry, zoom?: number
   return true;
 }
 
-function appendToGroup(groups: Map<string, string>, layerName: string, fragment: string): void {
-  if (!fragment) return;
-  groups.set(layerName, `${groups.get(layerName) ?? ""}${fragment}`);
-}
-
 function normalizeLabelText(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -175,7 +170,7 @@ function buildNatureDedupKey(
 
 function renderNatureLabels(
   tile: VectorTile,
-  groups: Map<string, string>,
+  labelFragments: string[],
   zoomLevel: number | undefined,
   tileX: number | undefined,
   tileY: number | undefined
@@ -253,17 +248,14 @@ function renderNatureLabels(
           if (seen.has(dedupKey)) continue;
           seen.add(dedupKey);
           labelId += 1;
-          appendToGroup(
-            groups,
-            config.targetGroup,
-            renderLineLabelElement(
-              `nature-label-${labelId}`,
-              pathData,
-              labelText,
-              className ? `${className} nature-label` : "nature-label",
-              config.style
-            )
+          const label = renderLineLabelElement(
+            `nature-label-${labelId}`,
+            pathData,
+            labelText,
+            className ? `${className} nature-label` : "nature-label",
+            config.style
           );
+          if (label) labelFragments.push(label);
           continue;
         }
 
@@ -279,16 +271,13 @@ function renderNatureLabels(
         const dedupKey = `${config.targetGroup}|${labelText}|${anchor?.x ?? 0}|${anchor?.y ?? 0}`;
         if (seen.has(dedupKey)) continue;
         seen.add(dedupKey);
-        appendToGroup(
-          groups,
-          config.targetGroup,
-          renderLabelElement(
-            anchor,
-            labelText,
-            className ? `${className} nature-label` : "nature-label",
-            config.style
-          )
+        const label = renderLabelElement(
+          anchor,
+          labelText,
+          className ? `${className} nature-label` : "nature-label",
+          config.style
         );
+        if (label) labelFragments.push(label);
       }
     }
   }
@@ -299,7 +288,8 @@ function renderLayerFeatures(
   tile: VectorTile,
   layerName: ReturnType<typeof getLayerOrder>[number],
   renderLabels: boolean,
-  zoomLevel: number | undefined
+  zoomLevel: number | undefined,
+  labelFragments: string[]
 ): void {
   const fragments: string[] = [];
   for (const sourceLayerName of getSourceLayerNames(layerName)) {
@@ -335,7 +325,7 @@ function renderLayerFeatures(
       if (renderLabels && labelText && textStyle) {
         const anchor = getLabelAnchor(geometry);
         const text = renderLabelElement(anchor, labelText, className, textStyle);
-        if (text) fragments.push(text);
+        if (text) labelFragments.push(text);
       }
     }
   }
@@ -347,7 +337,7 @@ function renderLayerFeatures(
 
 function renderRoadLabels(
   tile: VectorTile,
-  fragments: string[],
+  labelFragments: string[],
   zoomLevel: number | undefined
 ): void {
   const seenRoadLabels = new Set<string>();
@@ -383,7 +373,7 @@ function renderRoadLabels(
         className,
         textStyle
       );
-      if (label) fragments.push(label);
+      if (label) labelFragments.push(label);
     }
   }
 }
@@ -402,6 +392,9 @@ export function renderTileToSvg(
   }
 
   const groups = new Map<string, string>();
+  const roadLabelFragments: string[] = [];
+  const featureLabelFragments: string[] = [];
+  const natureLabelFragments: string[] = [];
   const renderLabels = Boolean(options.labels);
   const renderRoadLabelsEnabled = Boolean(options.roadLabels);
   const renderNatureLabelsEnabled = Boolean(options.natureLabels);
@@ -411,21 +404,21 @@ export function renderTileToSvg(
 
   for (const layerName of getLayerOrder()) {
     if (!isSupportedLayer(layerName)) continue;
-    renderLayerFeatures(groups, tile, layerName, renderLabels, zoomLevel);
+    renderLayerFeatures(groups, tile, layerName, renderLabels, zoomLevel, featureLabelFragments);
 
     if (layerName === "roads" && renderRoadLabelsEnabled) {
-      const existing = groups.get("roads") ?? "";
-      const roadFragments: string[] = [];
-      renderRoadLabels(tile, roadFragments, zoomLevel);
-      if (roadFragments.length > 0) {
-        groups.set("roads", `${existing}${roadFragments.join("")}`);
-      }
+      renderRoadLabels(tile, roadLabelFragments, zoomLevel);
     }
   }
 
   if (renderNatureLabelsEnabled) {
-    renderNatureLabels(tile, groups, zoomLevel, tileX, tileY);
+    renderNatureLabels(tile, natureLabelFragments, zoomLevel, tileX, tileY);
   }
 
-  return buildSvgDocument(groups);
+  const overlayContent = [
+    ...roadLabelFragments,
+    ...featureLabelFragments,
+    ...natureLabelFragments,
+  ].join("");
+  return buildSvgDocument(groups, overlayContent);
 }

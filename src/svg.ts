@@ -180,11 +180,13 @@ export function renderLineLabelElement(
   return `${hiddenPath}<text ${textAttrs}><textPath href="#${escapeXml(pathId)}" startOffset="50%">${escapeXml(text)}</textPath></text>`;
 }
 
-export function buildSvgDocument(groups: Map<string, string>): string {
+export function buildSvgDocument(groups: Map<string, string>, overlayContent = ""): string {
   const ordered = getLayerOrder();
   const layerContent = ordered
     .map((layerName) => `<g id="${layerName}">${groups.get(layerName) ?? ""}</g>`)
     .join("");
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">${layerContent}</svg>\n`;
+  const overlay = overlayContent ? `<g id="labels">${overlayContent}</g>` : "";
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">${layerContent}${overlay}</svg>\n`;
 }
