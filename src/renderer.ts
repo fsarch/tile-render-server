@@ -366,6 +366,15 @@ function buildAnchoredLabelBounds(
   if (visibleArea <= 0) {
     return null;
   }
+  // A label whose anchor sits close to a tile edge (common when a feature is split
+  // into several per-tile geometry fragments, e.g. a large nature reserve) would
+  // otherwise render with part of its text cut off by the tile boundary, which reads
+  // as broken/garbled rather than merely cropped. Require the text to be almost
+  // entirely visible in this tile.
+  const MIN_VISIBLE_WIDTH_FRACTION = 0.9;
+  if (visibleWidth < estimatedWidth * MIN_VISIBLE_WIDTH_FRACTION) {
+    return null;
+  }
 
   return {
     minX,
