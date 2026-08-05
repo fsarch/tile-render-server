@@ -1,5 +1,5 @@
 import type { NormalizedGeometry, Point2D } from "./geometry.js";
-import { getLayerOrder, type SvgStyle } from "./styles.js";
+import { getBackgroundFill, getLayerOrder, type SvgStyle } from "./styles.js";
 
 function escapeXml(value: unknown): string {
   return String(value)
@@ -203,6 +203,9 @@ export function buildSvgDocument(groups: Map<string, string>, overlayContent = "
     .join("");
 
   const overlay = overlayContent ? `<g id="labels">${overlayContent}</g>` : "";
+  // Always give the tile an opaque background so gaps in the "land" layer (or tiles
+  // where it has no coverage at all) never fall through to a transparent tile.
+  const background = `<rect x="0" y="0" width="256" height="256" fill="${getBackgroundFill()}" class="background" />`;
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">${layerContent}${overlay}</svg>\n`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">${background}${layerContent}${overlay}</svg>\n`;
 }

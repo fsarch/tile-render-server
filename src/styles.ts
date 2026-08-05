@@ -170,7 +170,7 @@ function roadWidthFromClass(value: string, fallback: number): number {
   if (value === "tertiary") return 1.8;
   if (value === "minor") return 1.5;
   if (value === "residential" || value === "unclassified" || value === "service") return 1.4;
-  if (value === "track" || value === "path") return 1.1;
+  if (value === "track" || value === "path") return 0.6;
   return fallback;
 }
 
@@ -179,14 +179,36 @@ const ROAD_VARIANT_STYLES: Record<string, SvgStyle> = {
   trunk: { stroke: "#f4a23c" },
   primary: { stroke: "#f7c948" },
   secondary: { stroke: "#f8dea1" },
-  tertiary: { stroke: "#f7e8c8" },
-  minor: { stroke: "#ffffff" },
+  tertiary: { stroke: "#f5dcaa" },
+  minor: { stroke: "#f2ecdd" },
   residential: { stroke: "#ffffff" },
   unclassified: { stroke: "#ffffff" },
-  service: { stroke: "#f2f2f2" },
-  track: { stroke: "#d3c8b8", "stroke-dasharray": "2 1.5" },
-  path: { stroke: "#c8beaf", "stroke-dasharray": "2 1.5" },
+  service: { stroke: "#c7b8a0" },
+  track: { stroke: "#8fb784", "stroke-dasharray": "1.5 1.3" },
+  path: { stroke: "#c8beaf", "stroke-dasharray": "1.5 1.3" },
+  ferry: { stroke: "#3f8fd6", "stroke-dasharray": "3 2" },
+  pier: { stroke: "#c2b394" },
+  bridge: { stroke: "#c9bdad" },
+  raceway: { stroke: "#d9a8a0" },
+  transit: { stroke: "#bfb9ab" },
 };
+
+// Roads under construction (any base class) render the same muted, dashed way
+// regardless of what they will eventually become.
+const CONSTRUCTION_ROAD_STYLE: SvgStyle = {
+  stroke: "#d8d3c8",
+  "stroke-dasharray": "1.5 1.5",
+};
+
+function getRoadVariantStyle(roadClass: string): SvgStyle | undefined {
+  if (Object.hasOwn(ROAD_VARIANT_STYLES, roadClass)) {
+    return ROAD_VARIANT_STYLES[roadClass];
+  }
+  if (roadClass.endsWith("_construction")) {
+    return CONSTRUCTION_ROAD_STYLE;
+  }
+  return undefined;
+}
 
 export function normalizeRoadClass(properties: Record<string, unknown> = {}): string {
   const token = String(
@@ -352,16 +374,33 @@ export function isSupportedLayer(layerName: string): layerName is LayerName {
   return Object.hasOwn(LAYER_STYLES, layerName);
 }
 
+// Road classes that only start rendering their geometry from a given zoom level.
+// Below that zoom the class is omitted entirely (not just its label).
+const ROAD_CLASS_MIN_ZOOM: Partial<Record<string, number>> = {
+  minor: 14,
+  track: 14,
+  path: 14,
+  transit: 14,
+};
+
+function isRoadClassVisibleAtZoom(roadClass: string, zoom?: number): boolean {
+  const minZoom = ROAD_CLASS_MIN_ZOOM[roadClass];
+  if (minZoom === undefined || !Number.isInteger(zoom)) return true;
+  return (zoom as number) >= minZoom;
+}
+
 export function isFeatureAllowedForLayer(
   layerName: LayerName,
-  properties: Record<string, unknown> = {}
+  properties: Record<string, unknown> = {},
+  zoom?: number
 ): boolean {
   const roadClass = normalizeRoadClass(properties);
   if (layerName === "railways") {
     return roadClass === "rail";
   }
   if (layerName === "roads") {
-    return roadClass !== "rail";
+    if (roadClass === "rail") return false;
+    return isRoadClassVisibleAtZoom(roadClass, zoom);
   }
   return true;
 }
@@ -372,6 +411,10 @@ export function getLayerOrder(): LayerName[] {
 
 export function getSourceLayerNames(layerName: LayerName): string[] {
   return SOURCE_LAYER_ALIASES[layerName] ?? [layerName];
+}
+
+export function getBackgroundFill(): string {
+  return String(LAYER_STYLES.land.polygon?.fill ?? "#f5f3e7");
 }
 
 export function getNatureTextStyle(theme: "water" | "nature"): SvgStyle | null {
@@ -404,7 +447,7 @@ export function getStyleForFeature(
 
   if (layerName === "roads" && geometryKind === "LineString") {
     const roadClass = normalizeRoadClass(properties);
-    const roadVariant = ROAD_VARIANT_STYLES[roadClass];
+    const roadVariant = getRoadVariantStyle(roadClass);
     if (roadVariant) {
       Object.assign(style, roadVariant);
     }

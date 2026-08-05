@@ -51,6 +51,7 @@ type LabelBounds = {
 };
 type NatureLabelCandidate = {
   dedupKey: string;
+  textKey: string;
   fragment: string;
   bounds: LabelBounds;
   score: number;
@@ -128,8 +129,15 @@ function pickLongestLine(lines: LineStringGeometry["lines"]): LineStringGeometry
   return bestLength > 12 ? best : [];
 }
 
+const ROAD_LABEL_CLASSES_MIN_ZOOM_14 = new Set(["minor", "track", "path", "transit"]);
+
 function shouldRenderRoadLabelByZoom(roadClass: string, zoom?: number): boolean {
   if (roadClass === "rail") return false;
+  // Keep road labels in sync with when their geometry starts rendering (minor/track/path
+  // only show from zoom 14, see ROAD_CLASS_MIN_ZOOM in styles.ts).
+  if (ROAD_LABEL_CLASSES_MIN_ZOOM_14.has(roadClass) && (!Number.isInteger(zoom) || (zoom ?? 0) < 14)) {
+    return false;
+  }
   if (!Number.isInteger(zoom) || (zoom ?? 0) < 13) return true;
   return roadClass === "motorway" || roadClass === "trunk" || roadClass === "primary";
 }
@@ -188,7 +196,18 @@ function shouldRenderNatureAreaLabel(geometry: NormalizedGeometry, zoom?: number
 
 function shouldSuppressNatureLabel(properties: FeatureProps): boolean {
   const tokens = getClassificationTokens(properties);
-  return tokens.includes("naturpark");
+  // Naturparks and bird sanctuaries (Vogelschutzgebiet / EU special protection areas)
+  // are too low-priority for the map style to warrant their own area label.
+  if (tokens.includes("naturpark") || tokens.includes("vogelschutzgebiet")) {
+    return true;
+  }
+  // Requirement 11.5: generic protected_area features must only get a label when
+  // they can actually be identified as nature-related (protect_class or object/title
+  // tags). Otherwise this catches unrelated administrative "protected_area" polygons.
+  if (tokens.includes("protected_area") && !isNatureRelatedProtectedArea(properties)) {
+    return true;
+  }
+  return false;
 }
 
 function getClassificationTokens(properties: FeatureProps): string[] {
@@ -365,11 +384,18 @@ function pushBestNatureLabels(
   }
 
   const selected: NatureLabelCandidate[] = [];
+  const usedTextKeys = new Set<string>();
   for (const candidate of [...bestByKey.values()].sort((a, b) => b.score - a.score)) {
+    // A single named area (e.g. a nature reserve split into several disjoint OSM
+    // multipolygon pieces) must not produce more than one label per tile.
+    if (usedTextKeys.has(candidate.textKey)) {
+      continue;
+    }
     if (selected.some((existing) => doLabelBoundsOverlap(existing.bounds, candidate.bounds))) {
       continue;
     }
     selected.push(candidate);
+    usedTextKeys.add(candidate.textKey);
   }
 
   for (const candidate of selected) {
@@ -389,6 +415,10 @@ function shouldSuppressSmallNatureReserveLabel(
   const visiblePolygonArea = getPolygonArea(geometry.rings);
   const minimumAreaForLabel = Math.max(1200, bounds.totalArea * 1.5);
   return visiblePolygonArea < minimumAreaForLabel;
+}
+
+function buildLabelTextKey(theme: "water" | "nature", labelText: string): string {
+  return `${theme}|${normalizeLabelText(labelText)}`;
 }
 
 function buildGlobalLabelBucketKey(
@@ -509,6 +539,7 @@ function renderNatureLabels(
           if (label) {
             candidates.push({
               dedupKey,
+              textKey: buildLabelTextKey(config.theme, labelText),
               fragment: label,
               bounds,
               score: bounds.visibleArea / Math.max(1, bounds.totalArea),
@@ -538,6 +569,7 @@ function renderNatureLabels(
         if (label) {
           candidates.push({
             dedupKey,
+            textKey: buildLabelTextKey(config.theme, labelText),
             fragment: label,
             bounds,
             score: bounds.visibleArea / Math.max(1, bounds.totalArea),
@@ -569,7 +601,7 @@ function renderLayerFeatures(
       const properties = (feature.properties ?? {}) as FeatureProps;
       const geometry = decodeFeatureGeometry(feature, layerExtent);
       if (!geometry) continue;
-      if (!isFeatureAllowedForLayer(layerName, properties)) continue;
+      if (!isFeatureAllowedForLayer(layerName, properties, zoomLevel)) continue;
       const labelText = getFeatureLabel(properties);
       const textStyle =
         renderLabels && labelText ? getTextStyleForFeature(layerName, properties, zoomLevel) : null;
