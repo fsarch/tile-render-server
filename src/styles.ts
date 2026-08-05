@@ -21,12 +21,12 @@ type LayerStyleDef = {
 };
 
 export const LAYER_ORDER: LayerName[] = [
-  "water",
   "land",
   "landuse",
+  "water",
+  "boundaries",
   "railways",
   "roads",
-  "boundaries",
   "buildings",
   "places",
 ];

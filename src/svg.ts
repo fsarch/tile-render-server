@@ -41,11 +41,13 @@ export function lineToPathData(line: Point2D[]): string {
 export function renderGeometryElements(
   geometry: NormalizedGeometry,
   style: SvgStyle,
-  className: string
+  className: string,
+  extraAttributes: Record<string, unknown> = {}
 ): string[] {
   const baseAttributes: Record<string, unknown> = {
     ...style,
     class: className || undefined,
+    ...extraAttributes,
   };
 
   if (geometry.kind === "Polygon") {
@@ -84,10 +86,11 @@ export function renderRailwayElements(
   geometry: NormalizedGeometry,
   railStyle: SvgStyle,
   sleeperStyle: SvgStyle,
-  className: string
+  className: string,
+  extraAttributes: Record<string, unknown> = {}
 ): string[] {
   if (geometry.kind !== "LineString") {
-    return renderGeometryElements(geometry, railStyle, className);
+    return renderGeometryElements(geometry, railStyle, className, extraAttributes);
   }
 
   const output: string[] = [];
@@ -98,7 +101,14 @@ export function renderRailwayElements(
   for (const line of geometry.lines) {
     const d = lineToPath(line, false);
     if (d) {
-      output.push(`<path ${attributesToString({ ...railStyle, class: className || undefined, d })} />`);
+      output.push(
+        `<path ${attributesToString({
+          ...railStyle,
+          class: className || undefined,
+          ...extraAttributes,
+          d,
+        })} />`
+      );
     }
 
     if (!Array.isArray(line) || line.length < 2) continue;
@@ -136,6 +146,7 @@ export function renderRailwayElements(
       `<path ${attributesToString({
         ...sleeperStyle,
         class: className ? `${className} rail-sleeper` : "rail-sleeper",
+        ...extraAttributes,
         d: sleeperSegments.join(" "),
       })} />`
     );
@@ -148,12 +159,14 @@ export function renderLabelElement(
   anchor: Point2D | null,
   text: string,
   className: string,
-  textStyle: SvgStyle = {}
+  textStyle: SvgStyle = {},
+  extraAttributes: Record<string, unknown> = {}
 ): string {
   if (!anchor || text.trim().length === 0) return "";
   return `<text ${attributesToString({
     ...textStyle,
     class: className || undefined,
+    ...extraAttributes,
     x: formatNumber(anchor.x),
     y: formatNumber(anchor.y),
   })}>${escapeXml(text)}</text>`;
@@ -164,7 +177,8 @@ export function renderLineLabelElement(
   pathData: string,
   text: string,
   className: string,
-  textStyle: SvgStyle = {}
+  textStyle: SvgStyle = {},
+  extraAttributes: Record<string, unknown> = {}
 ): string {
   if (!pathId || !pathData || text.trim().length === 0) return "";
   const hiddenPath = `<path ${attributesToString({
@@ -172,10 +186,12 @@ export function renderLineLabelElement(
     d: pathData,
     fill: "none",
     stroke: "none",
+    ...extraAttributes,
   })} />`;
   const textAttrs = attributesToString({
     ...textStyle,
     class: className ? `${className} road-label` : "road-label",
+    ...extraAttributes,
   });
   return `${hiddenPath}<text ${textAttrs}><textPath href="#${escapeXml(pathId)}" startOffset="50%">${escapeXml(text)}</textPath></text>`;
 }

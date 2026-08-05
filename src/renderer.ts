@@ -41,6 +41,22 @@ export interface RenderOptions {
 }
 
 type FeatureProps = Record<string, unknown>;
+type LabelBounds = {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  visibleArea: number;
+  totalArea: number;
+};
+type NatureLabelCandidate = {
+  dedupKey: string;
+  fragment: string;
+  bounds: LabelBounds;
+  score: number;
+};
+
+type RenderAttributes = Record<string, unknown>;
 
 function decodeVectorTile(buffer: ArrayBuffer | Uint8Array): VectorTile {
   const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
@@ -63,6 +79,39 @@ function getFeatureLabel(properties: FeatureProps = {}): string | null {
     }
   }
   return null;
+}
+
+function getFeatureDataId(feature: { id?: unknown; properties?: Record<string, unknown> }): string | undefined {
+  if (feature.id !== undefined && feature.id !== null) {
+    return String(feature.id);
+  }
+
+  const properties = feature.properties ?? {};
+  const candidates = [properties.id, properties["@id"], properties.osm_id, properties.osmId];
+  for (const candidate of candidates) {
+    if (candidate !== undefined && candidate !== null && String(candidate).trim().length > 0) {
+      return String(candidate);
+    }
+  }
+
+  return undefined;
+}
+
+function buildFeatureRenderAttributes(feature: {
+  id?: unknown;
+  properties?: Record<string, unknown>;
+}): RenderAttributes {
+  const dataId = getFeatureDataId(feature);
+  const properties = feature.properties ?? {};
+  const protectClass = properties.protect_class;
+  const attributes: RenderAttributes = {};
+  if (dataId) {
+    attributes["data-id"] = dataId;
+  }
+  if (protectClass !== undefined && protectClass !== null && String(protectClass).trim().length > 0) {
+    attributes["data-protect-class"] = String(protectClass);
+  }
+  return attributes;
 }
 
 function pickLongestLine(lines: LineStringGeometry["lines"]): LineStringGeometry["lines"][number] {
@@ -96,6 +145,14 @@ function shouldRenderWaterLabel(
     waterClass.includes("river") ||
     waterClass.includes("stream") ||
     waterClass.includes("canal");
+  const isStillWater =
+    waterClass.includes("lake") ||
+    waterClass.includes("pond") ||
+    waterClass.includes("reservoir") ||
+    waterClass.includes("basin") ||
+    waterClass.includes("lagoon") ||
+    waterClass.includes("pool") ||
+    waterClass.includes("weiher");
 
   if (geometry.kind === "LineString") {
     const longest = pickLongestLine(geometry.lines);
@@ -108,6 +165,10 @@ function shouldRenderWaterLabel(
 
   if (geometry.kind === "Polygon") {
     return getPolygonArea(geometry.rings) >= 120;
+  }
+
+  if (geometry.kind === "Point" && isStillWater) {
+    return false;
   }
 
   return true;
@@ -125,29 +186,212 @@ function shouldRenderNatureAreaLabel(geometry: NormalizedGeometry, zoom?: number
   return true;
 }
 
+function shouldSuppressNatureLabel(properties: FeatureProps): boolean {
+  const tokens = getClassificationTokens(properties);
+  return tokens.includes("naturpark");
+}
+
+function getClassificationTokens(properties: FeatureProps): string[] {
+  return [
+    properties.class,
+    properties.subclass,
+    properties.kind,
+    properties.type,
+  ]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .filter((value) => value.length > 0);
+}
+
+function isNatureRelatedProtectedArea(properties: FeatureProps): boolean {
+  const tokens = getClassificationTokens(properties);
+  if (!tokens.includes("protected_area")) {
+    return false;
+  }
+
+  const protectClass = getNumericStyleValue(properties.protect_class, Number.NaN);
+  if (Number.isFinite(protectClass)) {
+    if ((protectClass >= 1 && protectClass <= 7) || (protectClass >= 97 && protectClass <= 99)) {
+      return true;
+    }
+    return false;
+  }
+
+  const objectTokens = [
+    properties.protection_object,
+    properties.protection_title,
+    properties.boundary,
+    properties.natural,
+    properties.landuse,
+  ]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .filter((value) => value.length > 0)
+    .join(" ");
+
+  return [
+    "nature",
+    "habitat",
+    "landscape",
+    "wildlife",
+    "flora",
+    "fauna",
+    "ecosystem",
+    "biotope",
+    "water",
+    "wetland",
+    "forest",
+    "bird",
+    "geo",
+  ].some((token) => objectTokens.includes(token));
+}
+
+function isNatureReserve(properties: FeatureProps): boolean {
+  const tokens = getClassificationTokens(properties);
+
+  return tokens.includes("naturschutzgebiet") || isNatureRelatedProtectedArea(properties);
+}
+
+function getNatureLabelStyle(
+  baseStyle: SvgStyle | null,
+  properties: FeatureProps,
+  theme: "water" | "nature"
+): SvgStyle | null {
+  if (!baseStyle) return null;
+  if (theme === "nature" && isNatureReserve(properties)) {
+    const baseFontSize = getNumericStyleValue(baseStyle["font-size"], 10);
+    return {
+      ...baseStyle,
+      fill: "#2f7d32",
+      "font-size": Number(Math.max(8.5, baseFontSize - 1.5).toFixed(1)),
+      "stroke-width": Number(Math.max(1.6, getNumericStyleValue(baseStyle["stroke-width"], 2.2) - 0.4).toFixed(1)),
+    };
+  }
+  return baseStyle;
+}
+
 function normalizeLabelText(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function hashString(value: string): number {
-  let hash = 5381;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = (hash * 33) ^ value.charCodeAt(i);
+function getNumericStyleValue(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
   }
-  return hash >>> 0;
+  return fallback;
 }
 
-function isNatureLabelOwner(dedupKey: string, tileX?: number, tileY?: number): boolean {
-  const tx = Number.isInteger(tileX) ? tileX : undefined;
-  const ty = Number.isInteger(tileY) ? tileY : undefined;
-  if (tx === undefined || ty === undefined) return true;
-  const hash = hashString(dedupKey);
-  const ownerParityX = hash & 1;
-  const ownerParityY = (hash >> 1) & 1;
-  return (tx & 1) === ownerParityX && (ty & 1) === ownerParityY;
+function estimateTextWidth(text: string, fontSize: number): number {
+  let units = 0;
+  for (const char of text) {
+    if (char === " ") {
+      units += 0.34;
+    } else if ("ilI.,:;'|!".includes(char)) {
+      units += 0.3;
+    } else if ("mwMW@#%&".includes(char)) {
+      units += 0.92;
+    } else if (/[A-Z0-9]/.test(char)) {
+      units += 0.68;
+    } else {
+      units += 0.58;
+    }
+  }
+  return Math.max(fontSize, units * fontSize);
 }
 
-function buildNatureDedupKey(
+function buildAnchoredLabelBounds(
+  anchor: { x: number; y: number } | null,
+  labelText: string,
+  textStyle: SvgStyle | null
+): LabelBounds | null {
+  if (!anchor || !Number.isFinite(anchor.x) || !Number.isFinite(anchor.y) || !textStyle) {
+    return null;
+  }
+
+  const fontSize = getNumericStyleValue(textStyle["font-size"], 10);
+  const estimatedWidth = estimateTextWidth(labelText, fontSize);
+  const estimatedHeight = fontSize * 1.3;
+  const minX = anchor.x - estimatedWidth / 2;
+  const maxX = anchor.x + estimatedWidth / 2;
+  const minY = anchor.y - estimatedHeight / 2;
+  const maxY = anchor.y + estimatedHeight / 2;
+  const visibleWidth = Math.max(0, Math.min(maxX, 256) - Math.max(minX, 0));
+  const visibleHeight = Math.max(0, Math.min(maxY, 256) - Math.max(minY, 0));
+  const visibleArea = visibleWidth * visibleHeight;
+  if (visibleArea <= 0) {
+    return null;
+  }
+
+  return {
+    minX,
+    maxX,
+    minY,
+    maxY,
+    visibleArea,
+    totalArea: estimatedWidth * estimatedHeight,
+  };
+}
+
+function shouldRenderAnchoredLabelInTile(
+  anchor: { x: number; y: number } | null,
+  labelText: string,
+  textStyle: SvgStyle | null
+): boolean {
+  return buildAnchoredLabelBounds(anchor, labelText, textStyle) !== null;
+}
+
+function doLabelBoundsOverlap(a: LabelBounds, b: LabelBounds): boolean {
+  const overlapWidth = Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX);
+  const overlapHeight = Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY);
+  if (overlapWidth <= 0 || overlapHeight <= 0) {
+    return false;
+  }
+
+  const overlapArea = overlapWidth * overlapHeight;
+  const minArea = Math.min(a.visibleArea, b.visibleArea);
+  return overlapArea >= minArea * 0.35;
+}
+
+function pushBestNatureLabels(
+  candidates: NatureLabelCandidate[],
+  labelFragments: string[]
+): void {
+  const bestByKey = new Map<string, NatureLabelCandidate>();
+  for (const candidate of candidates) {
+    const existing = bestByKey.get(candidate.dedupKey);
+    if (!existing || candidate.score > existing.score) {
+      bestByKey.set(candidate.dedupKey, candidate);
+    }
+  }
+
+  const selected: NatureLabelCandidate[] = [];
+  for (const candidate of [...bestByKey.values()].sort((a, b) => b.score - a.score)) {
+    if (selected.some((existing) => doLabelBoundsOverlap(existing.bounds, candidate.bounds))) {
+      continue;
+    }
+    selected.push(candidate);
+  }
+
+  for (const candidate of selected) {
+    labelFragments.push(candidate.fragment);
+  }
+}
+
+function shouldSuppressSmallNatureReserveLabel(
+  properties: FeatureProps,
+  geometry: NormalizedGeometry,
+  bounds: LabelBounds
+): boolean {
+  if (!isNatureReserve(properties) || geometry.kind !== "Polygon") {
+    return false;
+  }
+
+  const visiblePolygonArea = getPolygonArea(geometry.rings);
+  const minimumAreaForLabel = Math.max(1200, bounds.totalArea * 1.5);
+  return visiblePolygonArea < minimumAreaForLabel;
+}
+
+function buildGlobalLabelBucketKey(
   theme: "water" | "nature",
   labelText: string,
   anchor: { x: number; y: number } | null,
@@ -155,17 +399,20 @@ function buildNatureDedupKey(
   tileY?: number
 ): string {
   const normalized = normalizeLabelText(labelText);
-  if (!anchor || !Number.isFinite(anchor.x) || !Number.isFinite(anchor.y)) {
+  if (anchor === null) {
     return `${theme}|${normalized}`;
   }
-  const tx = Number.isInteger(tileX) ? tileX : undefined;
-  const ty = Number.isInteger(tileY) ? tileY : undefined;
-  if (tx === undefined || ty === undefined) {
-    return `${theme}|${normalized}|${Math.floor(anchor.x / 64)}|${Math.floor(anchor.y / 64)}`;
+  const { x, y } = anchor;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return `${theme}|${normalized}`;
   }
-  const globalX = tx * 256 + anchor.x;
-  const globalY = ty * 256 + anchor.y;
-  return `${theme}|${normalized}|${Math.floor(globalX / 96)}|${Math.floor(globalY / 96)}`;
+
+  const normalizedTileX = Number.isInteger(tileX) ? Number(tileX) : 0;
+  const normalizedTileY = Number.isInteger(tileY) ? Number(tileY) : 0;
+  const globalX = normalizedTileX * 256 + x;
+  const globalY = normalizedTileY * 256 + y;
+  const bucketSize = 192;
+  return `${theme}|${normalized}|${Math.floor(globalX / bucketSize)}|${Math.floor(globalY / bucketSize)}`;
 }
 
 function renderNatureLabels(
@@ -179,7 +426,7 @@ function renderNatureLabels(
   const natureTextStyle = getNatureTextStyle("nature");
   if (!waterTextStyle && !natureTextStyle) return;
 
-  const seen = new Set<string>();
+  const candidates: NatureLabelCandidate[] = [];
   const labelConfigs: Array<{
     sourceLayers: string[];
     targetGroup: "water" | "landuse";
@@ -225,62 +472,82 @@ function renderNatureLabels(
         const feature = layer.feature(i);
         const geometry = decodeFeatureGeometry(feature, extent);
         if (!geometry) continue;
-        const labelText = getFeatureLabel(feature.properties as FeatureProps);
+        const properties = (feature.properties ?? {}) as FeatureProps;
+        const labelText = getFeatureLabel(properties);
         if (!labelText) continue;
-        if (!config.canRender((feature.properties ?? {}) as FeatureProps, geometry)) continue;
+        if (!config.canRender(properties, geometry)) continue;
+        if (config.theme === "nature" && shouldSuppressNatureLabel(properties)) continue;
 
-        const className = buildFeatureClasses(config.targetGroup, (feature.properties ?? {}) as FeatureProps);
+        const className = buildFeatureClasses(config.targetGroup, properties);
+        const labelStyle = getNatureLabelStyle(config.style, properties, config.theme);
+        if (!labelStyle) continue;
+        const renderAttributes = buildFeatureRenderAttributes(feature as { id?: unknown; properties?: Record<string, unknown> });
         if (config.lineLabels && geometry.kind === "LineString") {
           const longestLine = pickLongestLine(geometry.lines);
           if (longestLine.length < 2) continue;
           const pathData = lineToPathData(longestLine);
           if (!pathData) continue;
           const anchor = longestLine[Math.floor(longestLine.length / 2)] ?? null;
-          const ownershipKey = buildNatureDedupKey(
+          const bounds = buildAnchoredLabelBounds(anchor, labelText, labelStyle);
+          if (!bounds) continue;
+          const dedupKey = buildGlobalLabelBucketKey(
             config.theme,
             labelText,
             anchor,
             tileX,
             tileY
           );
-          if (!isNatureLabelOwner(ownershipKey, tileX, tileY)) continue;
-          const dedupKey = `${config.targetGroup}|${labelText}|${pathData}`;
-          if (seen.has(dedupKey)) continue;
-          seen.add(dedupKey);
           labelId += 1;
           const label = renderLineLabelElement(
             `nature-label-${labelId}`,
             pathData,
             labelText,
             className ? `${className} nature-label` : "nature-label",
-            config.style
+            labelStyle,
+            renderAttributes
           );
-          if (label) labelFragments.push(label);
+          if (label) {
+            candidates.push({
+              dedupKey,
+              fragment: label,
+              bounds,
+              score: bounds.visibleArea / Math.max(1, bounds.totalArea),
+            });
+          }
           continue;
         }
 
         const anchor = getLabelAnchor(geometry);
-        const ownershipKey = buildNatureDedupKey(
+        const bounds = buildAnchoredLabelBounds(anchor, labelText, labelStyle);
+        if (!bounds) continue;
+        if (shouldSuppressSmallNatureReserveLabel(properties, geometry, bounds)) continue;
+        const dedupKey = buildGlobalLabelBucketKey(
           config.theme,
           labelText,
           anchor,
           tileX,
           tileY
         );
-        if (!isNatureLabelOwner(ownershipKey, tileX, tileY)) continue;
-        const dedupKey = `${config.targetGroup}|${labelText}|${anchor?.x ?? 0}|${anchor?.y ?? 0}`;
-        if (seen.has(dedupKey)) continue;
-        seen.add(dedupKey);
         const label = renderLabelElement(
           anchor,
           labelText,
           className ? `${className} nature-label` : "nature-label",
-          config.style
+          labelStyle,
+          renderAttributes
         );
-        if (label) labelFragments.push(label);
+        if (label) {
+          candidates.push({
+            dedupKey,
+            fragment: label,
+            bounds,
+            score: bounds.visibleArea / Math.max(1, bounds.totalArea),
+          });
+        }
       }
     }
   }
+
+  pushBestNatureLabels(candidates, labelFragments);
 }
 
 function renderLayerFeatures(
@@ -314,17 +581,21 @@ function renderLayerFeatures(
 
       const className = buildFeatureClasses(layerName, properties);
       const style = getStyleForFeature(layerName, geometry.kind, properties);
+      const renderAttributes = buildFeatureRenderAttributes(feature as { id?: unknown; properties?: Record<string, unknown> });
       if (!style) continue;
 
       if (layerName === "railways") {
-        fragments.push(...renderRailwayElements(geometry, style, getRailSleeperStyle(), className));
+        fragments.push(
+          ...renderRailwayElements(geometry, style, getRailSleeperStyle(), className, renderAttributes)
+        );
       } else {
-        fragments.push(...renderGeometryElements(geometry, style, className));
+        fragments.push(...renderGeometryElements(geometry, style, className, renderAttributes));
       }
 
       if (renderLabels && labelText && textStyle) {
         const anchor = getLabelAnchor(geometry);
-        const text = renderLabelElement(anchor, labelText, className, textStyle);
+        if (!shouldRenderAnchoredLabelInTile(anchor, labelText, textStyle)) continue;
+        const text = renderLabelElement(anchor, labelText, className, textStyle, renderAttributes);
         if (text) labelFragments.push(text);
       }
     }
@@ -366,12 +637,14 @@ function renderRoadLabels(
       seenRoadLabels.add(dedupKey);
       roadLabelId += 1;
       const className = buildFeatureClasses("roads", properties);
+      const renderAttributes = buildFeatureRenderAttributes( feature as { id?: unknown; properties?: Record<string, unknown> });
       const label = renderLineLabelElement(
         `road-label-${roadLabelId}`,
         pathData,
         labelText,
         className,
-        textStyle
+        textStyle,
+        renderAttributes
       );
       if (label) labelFragments.push(label);
     }

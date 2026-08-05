@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/main.js",
+    "start": "fsarch-server start",
     "render": "node dist/index.js",
     "example": "node dist/example-server.js --port 4173 --api-base http://127.0.0.1:3000",
     "test": "npm run build && vitest run"
