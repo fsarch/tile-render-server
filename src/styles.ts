@@ -158,6 +158,33 @@ const BASE_CLASS_BY_LAYER: Record<LayerName, string> = {
   landuse: "landuse",
 };
 
+// Higher-class roads must render on top of lower-class ones within the roads layer
+// so they stay visually continuous at intersections instead of being interrupted by
+// whatever happened to come later in the source data (Autobahn -> Bundesstraße ->
+// Landstraße -> Straße -> Nebenstraße/Weg).
+const ROAD_RENDER_PRIORITY: Partial<Record<string, number>> = {
+  motorway: 12,
+  trunk: 11,
+  primary: 10,
+  secondary: 9,
+  tertiary: 8,
+  minor: 7,
+  residential: 6,
+  unclassified: 6,
+  service: 5,
+  ferry: 4,
+  track: 3,
+  path: 3,
+  transit: 3,
+  pier: 2,
+  bridge: 2,
+  raceway: 2,
+};
+
+export function getRoadRenderPriority(roadClass: string): number {
+  return ROAD_RENDER_PRIORITY[roadClass] ?? 0;
+}
+
 function clampNumber(value: unknown, fallback: number): number {
   if (typeof value !== "number" || Number.isNaN(value)) {
     return fallback;
@@ -174,6 +201,18 @@ function roadWidthFromClass(value: string, fallback: number): number {
   if (value === "residential" || value === "unclassified" || value === "service") return 1.4;
   if (value === "track" || value === "path") return 0.6;
   return fallback;
+}
+
+// Below zoom 11 the map covers much more ground per tile; full-size road strokes
+// look disproportionately thick there, so scale them down.
+const LOW_ZOOM_ROAD_WIDTH_MAX_ZOOM = 11;
+const LOW_ZOOM_ROAD_WIDTH_SCALE = 0.6;
+
+function roadWidthZoomScale(zoom?: number): number {
+  if (Number.isInteger(zoom) && (zoom as number) < LOW_ZOOM_ROAD_WIDTH_MAX_ZOOM) {
+    return LOW_ZOOM_ROAD_WIDTH_SCALE;
+  }
+  return 1;
 }
 
 const ROAD_VARIANT_STYLES: Record<string, SvgStyle> = {
@@ -422,7 +461,8 @@ export function getRailSleeperStyle(): SvgStyle {
 export function getStyleForFeature(
   layerName: LayerName,
   geometryKind: GeometryKind,
-  properties: Record<string, unknown> = {}
+  properties: Record<string, unknown> = {},
+  zoom?: number
 ): SvgStyle | null {
   const styleSet = LAYER_STYLES[layerName];
   if (!styleSet) return null;
@@ -443,10 +483,8 @@ export function getStyleForFeature(
     if (roadVariant) {
       Object.assign(style, roadVariant);
     }
-    style["stroke-width"] = roadWidthFromClass(
-      roadClass,
-      clampNumber(style["stroke-width"], 1.5)
-    );
+    const baseWidth = roadWidthFromClass(roadClass, clampNumber(style["stroke-width"], 1.5));
+    style["stroke-width"] = Number((baseWidth * roadWidthZoomScale(zoom)).toFixed(2));
   }
 
   if (layerName === "landuse") {

@@ -13,6 +13,7 @@ import {
   getLayerOrder,
   getNatureTextStyle,
   getRailSleeperStyle,
+  getRoadRenderPriority,
   getSourceLayerNames,
   getStyleForFeature,
   getTextStyleForFeature,
@@ -80,6 +81,18 @@ function getFeatureLabel(properties: FeatureProps = {}): string | null {
     }
   }
   return null;
+}
+
+// Motorways/trunk roads are identified by their route number in normal map use
+// (e.g. "A 40"), not by a historical or colloquial name (e.g. "Ruhrschnellweg").
+function getRoadLabelText(properties: FeatureProps, roadClass: string): string | null {
+  if (roadClass === "motorway" || roadClass === "trunk") {
+    const ref = properties.ref;
+    if (typeof ref === "string" && ref.trim().length > 0) {
+      return ref.trim();
+    }
+  }
+  return getFeatureLabel(properties);
 }
 
 function getFeatureDataId(feature: { id?: unknown; properties?: Record<string, unknown> }): string | undefined {
@@ -598,6 +611,8 @@ function renderLayerFeatures(
   labelFragments: string[]
 ): void {
   const fragments: string[] = [];
+  const isRoadsLayer = layerName === "roads";
+  const roadFragments: Array<{ priority: number; html: string }> = [];
   for (const sourceLayerName of getSourceLayerNames(layerName)) {
     const layer: VectorTileLayer | undefined = tile.layers[sourceLayerName];
     if (!layer) continue;
@@ -619,7 +634,7 @@ function renderLayerFeatures(
       if (hidePlacePoint) continue;
 
       const className = buildFeatureClasses(layerName, properties);
-      const style = getStyleForFeature(layerName, geometry.kind, properties);
+      const style = getStyleForFeature(layerName, geometry.kind, properties, zoomLevel);
       const renderAttributes = buildFeatureRenderAttributes(feature as { id?: unknown; properties?: Record<string, unknown> });
       if (!style) continue;
 
@@ -627,6 +642,11 @@ function renderLayerFeatures(
         fragments.push(
           ...renderRailwayElements(geometry, style, getRailSleeperStyle(), className, renderAttributes)
         );
+      } else if (isRoadsLayer) {
+        const priority = getRoadRenderPriority(normalizeRoadClass(properties));
+        for (const html of renderGeometryElements(geometry, style, className, renderAttributes)) {
+          roadFragments.push({ priority, html });
+        }
       } else {
         fragments.push(...renderGeometryElements(geometry, style, className, renderAttributes));
       }
@@ -640,7 +660,12 @@ function renderLayerFeatures(
     }
   }
 
-  if (fragments.length > 0) {
+  if (isRoadsLayer && roadFragments.length > 0) {
+    // Stable sort: higher-priority roads (Autobahn) end up later in the document,
+    // i.e. painted on top of lower-priority ones (Bundesstraße -> Landstraße -> ...).
+    roadFragments.sort((a, b) => a.priority - b.priority);
+    groups.set(layerName, roadFragments.map((entry) => entry.html).join(""));
+  } else if (fragments.length > 0) {
     groups.set(layerName, fragments.join(""));
   }
 }
@@ -661,9 +686,9 @@ function renderRoadLabels(
       const geometry = decodeFeatureGeometry(feature, layerExtent);
       if (!geometry || geometry.kind !== "LineString") continue;
       const properties = (feature.properties ?? {}) as FeatureProps;
-      const labelText = getFeatureLabel(properties);
-      if (!labelText) continue;
       const roadClass = normalizeRoadClass(properties);
+      const labelText = getRoadLabelText(properties, roadClass);
+      if (!labelText) continue;
       if (!shouldRenderRoadLabelByZoom(roadClass, zoomLevel)) continue;
       const textStyle = getTextStyleForLayer("roads");
       if (!textStyle) continue;
