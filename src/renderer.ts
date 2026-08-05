@@ -216,9 +216,15 @@ function shouldRenderNatureAreaLabel(geometry: NormalizedGeometry, zoom?: number
 
 function shouldSuppressNatureLabel(properties: FeatureProps): boolean {
   const tokens = getClassificationTokens(properties);
-  // Naturparks and bird sanctuaries (Vogelschutzgebiet / EU special protection areas)
-  // are too low-priority for the map style to warrant their own area label.
-  if (tokens.includes("naturpark") || tokens.includes("vogelschutzgebiet")) {
+  // Naturparks, bird sanctuaries (Vogelschutzgebiet / EU special protection areas), and
+  // Landschaftsschutzgebiete (landscape protection areas, the lowest protection tier and
+  // often named after every stream/valley they cover, producing unwieldy long labels) are
+  // too low-priority for the map style to warrant their own area label.
+  if (
+    tokens.includes("naturpark") ||
+    tokens.includes("vogelschutzgebiet") ||
+    tokens.includes("landschaftsschutzgebiet")
+  ) {
     return true;
   }
   // Requirement 11.5: generic protected_area features must only get a label when
