@@ -129,13 +129,20 @@ function pickLongestLine(lines: LineStringGeometry["lines"]): LineStringGeometry
   return bestLength > 12 ? best : [];
 }
 
-const ROAD_LABEL_CLASSES_MIN_ZOOM_14 = new Set(["minor", "track", "path", "transit"]);
+const ROAD_LABEL_MIN_ZOOM: Partial<Record<string, number>> = {
+  // Keep road labels in sync with when their geometry starts rendering, see
+  // ROAD_CLASS_MIN_ZOOM in styles.ts.
+  minor: 14,
+  track: 14,
+  path: 14,
+  transit: 14,
+  trunk: 10,
+};
 
 function shouldRenderRoadLabelByZoom(roadClass: string, zoom?: number): boolean {
   if (roadClass === "rail") return false;
-  // Keep road labels in sync with when their geometry starts rendering (minor/track/path
-  // only show from zoom 14, see ROAD_CLASS_MIN_ZOOM in styles.ts).
-  if (ROAD_LABEL_CLASSES_MIN_ZOOM_14.has(roadClass) && (!Number.isInteger(zoom) || (zoom ?? 0) < 14)) {
+  const minZoom = ROAD_LABEL_MIN_ZOOM[roadClass];
+  if (minZoom !== undefined && (!Number.isInteger(zoom) || (zoom ?? 0) < minZoom)) {
     return false;
   }
   if (!Number.isInteger(zoom) || (zoom ?? 0) < 13) return true;

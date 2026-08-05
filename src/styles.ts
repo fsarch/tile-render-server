@@ -20,6 +20,8 @@ type LayerStyleDef = {
   text?: SvgStyle;
 };
 
+const RAILWAYS_MIN_ZOOM = 10;
+
 export const LAYER_ORDER: LayerName[] = [
   "land",
   "landuse",
@@ -112,9 +114,9 @@ const LAYER_STYLES: Record<LayerName, LayerStyleDef> = {
   },
   boundaries: {
     line: {
-      stroke: "#8f8f8f",
-      "stroke-width": 0.9,
-      "stroke-dasharray": "3 2",
+      stroke: "#b8b8b8",
+      "stroke-width": 0.5,
+      "stroke-dasharray": "2 1.5",
       fill: "none",
     },
   },
@@ -141,7 +143,7 @@ const LAYER_STYLES: Record<LayerName, LayerStyleDef> = {
 const RAIL_SLEEPER_STYLE: SvgStyle = {
   fill: "#bdbdbd",
   stroke: "#bdbdbd",
-  "stroke-width": 0.7,
+  "stroke-width": 0.35,
   "stroke-linecap": "round",
 };
 
@@ -193,21 +195,8 @@ const ROAD_VARIANT_STYLES: Record<string, SvgStyle> = {
   transit: { stroke: "#bfb9ab" },
 };
 
-// Roads under construction (any base class) render the same muted, dashed way
-// regardless of what they will eventually become.
-const CONSTRUCTION_ROAD_STYLE: SvgStyle = {
-  stroke: "#d8d3c8",
-  "stroke-dasharray": "1.5 1.5",
-};
-
 function getRoadVariantStyle(roadClass: string): SvgStyle | undefined {
-  if (Object.hasOwn(ROAD_VARIANT_STYLES, roadClass)) {
-    return ROAD_VARIANT_STYLES[roadClass];
-  }
-  if (roadClass.endsWith("_construction")) {
-    return CONSTRUCTION_ROAD_STYLE;
-  }
-  return undefined;
+  return ROAD_VARIANT_STYLES[roadClass];
 }
 
 export function normalizeRoadClass(properties: Record<string, unknown> = {}): string {
@@ -396,10 +385,13 @@ export function isFeatureAllowedForLayer(
 ): boolean {
   const roadClass = normalizeRoadClass(properties);
   if (layerName === "railways") {
-    return roadClass === "rail";
+    if (roadClass !== "rail") return false;
+    if (Number.isInteger(zoom) && (zoom as number) < RAILWAYS_MIN_ZOOM) return false;
+    return true;
   }
   if (layerName === "roads") {
     if (roadClass === "rail") return false;
+    if (roadClass.endsWith("_construction")) return false;
     return isRoadClassVisibleAtZoom(roadClass, zoom);
   }
   return true;
@@ -582,10 +574,20 @@ export function getTextStyleForFeature(
     else if (population < 25_000) size -= 0.8;
   }
 
-  const fontSize = Math.max(8, Math.min(18, size));
-  if (Number.isInteger(zoom) && (zoom ?? 0) <= 13 && fontSize <= 10) {
+  // Decide whether this place is significant enough to label at all *before* the
+  // low-zoom cosmetic shrink below, so shrinking never causes extra places to drop out.
+  const unscaledFontSize = Math.max(8, Math.min(18, size));
+  if (Number.isInteger(zoom) && (zoom ?? 0) <= 13 && unscaledFontSize <= 10) {
     return null;
   }
+
+  // At low zoom the map shows many places at once; keep their labels a bit smaller
+  // than the same class would render at higher zoom.
+  if (Number.isInteger(zoom) && (zoom ?? 0) <= 9) {
+    size *= 0.72;
+  }
+
+  const fontSize = Math.max(8, Math.min(18, size));
   const strokeWidth = Number(Math.max(1.8, fontSize * 0.2).toFixed(2));
 
   return {
