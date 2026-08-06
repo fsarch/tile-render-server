@@ -3,6 +3,8 @@ import { ConfigService } from "@nestjs/config";
 import { resolve } from "node:path";
 import { openPMTilesArchive, type LocalPMTilesArchive } from "../../pmtiles.js";
 import { renderTileToSvg, type RenderOptions } from "../../renderer.js";
+import type { LabelAnchorCache } from "../../label-anchor-cache.js";
+import { PostgresLabelAnchorCache } from "./label-anchor-cache.postgres.js";
 
 type TileArchive = Pick<LocalPMTilesArchive, "close" | "getHeader" | "getTile">;
 
@@ -11,7 +13,10 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
   private archive?: TileArchive;
   private archivePromise?: Promise<TileArchive>;
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly labelAnchorCache: PostgresLabelAnchorCache
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.getArchive();
@@ -42,14 +47,19 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException(`Tile ${z}/${x}/${y} is empty or missing`);
     }
 
-    const svg = this.renderSvg(tileData, {
-      labels: this.getBooleanConfig("tiles.labels", false),
-      roadLabels: this.getBooleanConfig("tiles.roadLabels", false),
-      natureLabels: this.getBooleanConfig("tiles.natureLabels", false),
-      zoom: z,
-      tileX: x,
-      tileY: y,
-    });
+    const svg = await this.renderSvg(
+      tileData,
+      {
+        labels: this.getBooleanConfig("tiles.labels", false),
+        roadLabels: this.getBooleanConfig("tiles.roadLabels", false),
+        natureLabels: this.getBooleanConfig("tiles.natureLabels", false),
+        zoom: z,
+        tileX: x,
+        tileY: y,
+      },
+      archive,
+      this.labelAnchorCache
+    );
 
     if (!svg) {
       throw new NotFoundException(`Tile ${z}/${x}/${y} could not be rendered`);
@@ -83,8 +93,13 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
     return openPMTilesArchive(inputPath);
   }
 
-  protected renderSvg(tileBuffer: ArrayBuffer | Uint8Array, options: RenderOptions): string | null {
-    return renderTileToSvg(tileBuffer, options);
+  protected renderSvg(
+    tileBuffer: ArrayBuffer | Uint8Array,
+    options: RenderOptions,
+    archive: TileArchive,
+    labelAnchorCache: LabelAnchorCache
+  ): Promise<string | null> {
+    return renderTileToSvg(tileBuffer, options, archive, labelAnchorCache);
   }
 
   private getInputPath(): string {

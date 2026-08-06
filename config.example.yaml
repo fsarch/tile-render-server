@@ -1,0 +1,28 @@
+app:
+  host: 0.0.0.0
+  port: 3000
+
+tiles:
+  input: ./planet.pmtiles
+  cacheControl: public, max-age=3600
+  labels: true
+  roadLabels: true
+  natureLabels: true
+  # Bump whenever planet.pmtiles is regenerated/replaced, so cross-tile label anchors
+  # cached in Postgres against a prior build's feature ids can't silently leak into a
+  # new one (old rows for a previous version just become unreferenced).
+  datasetVersion: ""
+
+# Shared, persistent cache for cross-tile label anchor positions (see
+# src/label-anchor-cache.ts). Required for `npm start` - not used by `npm test` or the
+# batch CLI (`npm run render`).
+database:
+  type: postgres
+  host: localhost
+  port: 5432 # must be explicit: @fsarch/server defaults to 26257 (CockroachDB) otherwise
+  username: maps_converter
+  password: replace-me
+  database: maps_converter
+
+# Copy this file to config.yaml (gitignored - never commit real credentials) and fill
+# in your actual database settings.

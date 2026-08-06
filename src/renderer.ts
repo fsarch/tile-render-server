@@ -5,9 +5,18 @@ import {
   getLabelAnchor,
   getLineLength,
   getPolygonArea,
+  simplifyLine,
   type LineStringGeometry,
   type NormalizedGeometry,
+  type Point2D,
+  type PolygonGeometry,
 } from "./geometry.js";
+import {
+  InMemoryLabelAnchorCache,
+  type GlobalAreaAnchor,
+  type LabelAnchorCache,
+  type LabelAnchorKey,
+} from "./label-anchor-cache.js";
 import {
   buildFeatureClasses,
   getLayerOrder,
@@ -39,6 +48,14 @@ export interface RenderOptions {
   zoom?: number;
   tileX?: number;
   tileY?: number;
+}
+
+// Minimal read access to the PMTiles archive, so the renderer can look at ancestor
+// and neighboring tiles to find the true extent of a large, multi-fragment named
+// area (e.g. a nature reserve split into many disjoint polygons across many tiles).
+// Both LocalPMTilesArchive and TilesService's TileArchive satisfy this structurally.
+export interface TileSource {
+  getTile(z: number, x: number, y: number): Promise<ArrayBuffer | Uint8Array | undefined>;
 }
 
 type FeatureProps = Record<string, unknown>;
@@ -142,6 +159,16 @@ function pickLongestLine(lines: LineStringGeometry["lines"]): LineStringGeometry
   return bestLength > 12 ? best : [];
 }
 
+// Rivers/streams (and occasionally roads) can zigzag tightly enough that text
+// following the raw path via <textPath> flips each letter's angle and becomes
+// unreadable. Simplifying just the line used for label placement smooths that out
+// without touching the actual rendered geometry of the feature.
+const LABEL_LINE_SIMPLIFY_TOLERANCE = 6;
+
+function simplifyLineForLabel(line: LineStringGeometry["lines"][number]): LineStringGeometry["lines"][number] {
+  return simplifyLine(line, LABEL_LINE_SIMPLIFY_TOLERANCE);
+}
+
 const ROAD_LABEL_MIN_ZOOM: Partial<Record<string, number>> = {
   // Keep road labels in sync with when their geometry starts rendering, see
   // ROAD_CLASS_MIN_ZOOM in styles.ts.
@@ -150,6 +177,7 @@ const ROAD_LABEL_MIN_ZOOM: Partial<Record<string, number>> = {
   path: 14,
   transit: 14,
   trunk: 10,
+  tertiary: 13,
 };
 
 function shouldRenderRoadLabelByZoom(roadClass: string, zoom?: number): boolean {
@@ -159,7 +187,12 @@ function shouldRenderRoadLabelByZoom(roadClass: string, zoom?: number): boolean 
     return false;
   }
   if (!Number.isInteger(zoom) || (zoom ?? 0) < 13) return true;
-  return roadClass === "motorway" || roadClass === "trunk" || roadClass === "primary";
+  return (
+    roadClass === "motorway" ||
+    roadClass === "trunk" ||
+    roadClass === "primary" ||
+    roadClass === "tertiary"
+  );
 }
 
 function shouldRenderWaterLabel(
@@ -203,7 +236,7 @@ function shouldRenderWaterLabel(
 }
 
 function shouldRenderNatureAreaLabel(geometry: NormalizedGeometry, zoom?: number): boolean {
-  if (!Number.isInteger(zoom) || (zoom ?? 0) < 10) return false;
+  if (!Number.isInteger(zoom) || (zoom ?? 0) < 12) return false;
   if (geometry.kind === "Polygon") {
     return getPolygonArea(geometry.rings) >= 120;
   }
@@ -367,12 +400,16 @@ function buildAnchoredLabelBounds(
     return null;
   }
   // A label whose anchor sits close to a tile edge (common when a feature is split
-  // into several per-tile geometry fragments, e.g. a large nature reserve) would
+  // into several per-tile geometry fragments, e.g. a large nature reserve, or when a
+  // line label's midpoint happens to fall right at/beyond the boundary) would
   // otherwise render with part of its text cut off by the tile boundary, which reads
   // as broken/garbled rather than merely cropped. Require the text to be almost
-  // entirely visible in this tile.
-  const MIN_VISIBLE_WIDTH_FRACTION = 0.9;
-  if (visibleWidth < estimatedWidth * MIN_VISIBLE_WIDTH_FRACTION) {
+  // entirely visible in this tile, in both directions.
+  const MIN_VISIBLE_FRACTION = 0.9;
+  if (
+    visibleWidth < estimatedWidth * MIN_VISIBLE_FRACTION ||
+    visibleHeight < estimatedHeight * MIN_VISIBLE_FRACTION
+  ) {
     return null;
   }
 
@@ -383,6 +420,101 @@ function buildAnchoredLabelBounds(
     maxY,
     visibleArea,
     totalArea: estimatedWidth * estimatedHeight,
+  };
+}
+
+// Bounding box of exactly the portion of `line` between arc-length distances
+// [startDist, endDist] from its start, clipping the segments that straddle the
+// window boundaries instead of just picking whichever vertices happen to fall
+// inside it.
+function boundsOfLineWindow(
+  line: Point2D[],
+  startDist: number,
+  endDist: number
+): { minX: number; maxX: number; minY: number; maxY: number } | null {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let found = false;
+  const include = (x: number, y: number): void => {
+    found = true;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  };
+
+  let traveled = 0;
+  for (let i = 1; i < line.length; i += 1) {
+    const a = line[i - 1];
+    const b = line[i];
+    const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+    const segStart = traveled;
+    const segEnd = traveled + segLen;
+    if (segEnd >= startDist && segStart <= endDist) {
+      const t0 = segLen > 0 ? Math.max(0, (startDist - segStart) / segLen) : 0;
+      const t1 = segLen > 0 ? Math.min(1, (endDist - segStart) / segLen) : 1;
+      include(a.x + (b.x - a.x) * t0, a.y + (b.y - a.y) * t0);
+      include(a.x + (b.x - a.x) * t1, a.y + (b.y - a.y) * t1);
+    }
+    traveled = segEnd;
+  }
+  return found ? { minX, maxX, minY, maxY } : null;
+}
+
+// Line labels (road names, river names) render via <textPath>, which distributes
+// the text along the *actual curve* of the line, centered at 50% of its arc length -
+// not in a straight symmetric box around one vertex. A curving line can easily have
+// its midpoint vertex safely inside the tile while the portion the text physically
+// covers still sweeps outside it (exactly what happened with "Am Sondert": the
+// middle vertex sat at y=250, comfortably inside, while the line's ends curved down
+// to y=264, past the tile's bottom edge, taking part of the text with them). This
+// windows the line to the arc-length span the text will actually occupy and checks
+// *that* portion's visibility, instead of an estimated box around a single point.
+function buildLineLabelBounds(
+  line: Point2D[],
+  labelText: string,
+  textStyle: SvgStyle | null
+): LabelBounds | null {
+  if (!Array.isArray(line) || line.length < 2 || !textStyle) return null;
+
+  const fontSize = getNumericStyleValue(textStyle["font-size"], 10);
+  const estimatedWidth = estimateTextWidth(labelText, fontSize);
+  const estimatedHeight = fontSize * 1.3;
+  const totalLength = getLineLength(line);
+  if (totalLength <= 0) return null;
+
+  const center = totalLength / 2;
+  const startDist = Math.max(0, center - estimatedWidth / 2);
+  const endDist = Math.min(totalLength, center + estimatedWidth / 2);
+  const window = boundsOfLineWindow(line, startDist, endDist);
+  if (!window) return null;
+
+  const minY = window.minY - estimatedHeight / 2;
+  const maxY = window.maxY + estimatedHeight / 2;
+  const visibleWidth = Math.max(0, Math.min(window.maxX, 256) - Math.max(window.minX, 0));
+  const visibleHeight = Math.max(0, Math.min(maxY, 256) - Math.max(minY, 0));
+  const visibleArea = visibleWidth * visibleHeight;
+  if (visibleArea <= 0) return null;
+
+  const totalWidth = window.maxX - window.minX;
+  const totalHeight = maxY - minY;
+  const MIN_VISIBLE_FRACTION = 0.9;
+  if (
+    (totalWidth > 0 && visibleWidth < totalWidth * MIN_VISIBLE_FRACTION) ||
+    visibleHeight < totalHeight * MIN_VISIBLE_FRACTION
+  ) {
+    return null;
+  }
+
+  return {
+    minX: window.minX,
+    maxX: window.maxX,
+    minY,
+    maxY,
+    visibleArea,
+    totalArea: Math.max(totalWidth, 1) * totalHeight,
   };
 }
 
@@ -456,6 +588,352 @@ function buildLabelTextKey(theme: "water" | "nature", labelText: string): string
   return `${theme}|${normalizeLabelText(labelText)}`;
 }
 
+// --- Cross-tile area anchor resolution -------------------------------------------
+//
+// A single named nature area (e.g. a large Naturschutzgebiet) is frequently split by
+// Planetiler into many disjoint polygon fragments spread across several tiles. Each
+// tile only ever sees its own local fragment(s), so independently placing a label per
+// tile produces the same name repeated across many neighboring tiles. To place just
+// one label for the whole area, we look for its true extent outside the current tile:
+//
+//   1. Zoom out one level at a time, looking for a (coarser) ancestor tile that still
+//      contains a same-named "park" polygon. Keep going while it's still there.
+//   2. If, at some ancestor zoom, the area is fully inside that one tile (its bounds
+//      don't touch the tile edges), that tile's centroid is the answer.
+//   3. If the area disappears while zooming out before that happens, fall back to the
+//      last zoom level where it was still present and scan outward (left/right/up/
+//      down) from there until each direction stops finding it, to approximate the
+//      overall bounding box and use its center.
+//
+// The result is cached (by name) per process, since resolving it involves several
+// extra archive reads and every fragment/tile of the same area asks the same question.
+
+const MIN_AREA_ANCHOR_ZOOM = 4;
+const AREA_ANCHOR_NEIGHBOR_SCAN_RADIUS = 8;
+const AREA_ANCHOR_EDGE_EPSILON = 0.75;
+
+type PixelBounds = { minX: number; maxX: number; minY: number; maxY: number };
+
+// In-process single-flight de-dup: concurrent fragments/requests within one process
+// asking about the same name share one computation (and, once persisted, one round
+// trip to the injected LabelAnchorCache) instead of racing to compute it separately.
+const areaAnchorCache = new Map<string, Promise<GlobalAreaAnchor | null>>();
+
+// Used whenever no LabelAnchorCache is injected (e.g. the batch CLI/worker.ts, or
+// direct renderer.ts callers/tests) - preserves the pre-persistence, process-lifetime
+// caching behavior exactly as it worked before.
+const defaultLabelAnchorCache = new InMemoryLabelAnchorCache();
+
+function polygonPixelBounds(geometry: PolygonGeometry): PixelBounds | null {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const ring of geometry.rings) {
+    for (const point of ring) {
+      if (point.x < minX) minX = point.x;
+      if (point.x > maxX) maxX = point.x;
+      if (point.y < minY) minY = point.y;
+      if (point.y > maxY) maxY = point.y;
+    }
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
+  return { minX, maxX, minY, maxY };
+}
+
+function unionPixelBounds(boundsList: PixelBounds[]): PixelBounds | null {
+  let combined: PixelBounds | null = null;
+  for (const bounds of boundsList) {
+    if (!combined) {
+      combined = { ...bounds };
+      continue;
+    }
+    combined.minX = Math.min(combined.minX, bounds.minX);
+    combined.maxX = Math.max(combined.maxX, bounds.maxX);
+    combined.minY = Math.min(combined.minY, bounds.minY);
+    combined.maxY = Math.max(combined.maxY, bounds.maxY);
+  }
+  return combined;
+}
+
+// A named area can be represented in a tile either by its actual polygon fragment or
+// by a standalone point marker (common Planetiler technique for placing a label
+// reference once per tile a large multipolygon touches, independent of whether that
+// tile also carries a polygon fragment). Both must count as "the name is present
+// here" for the ancestor/neighbor search below, or the search can wrongly conclude
+// the area doesn't extend into a tile that only has the point representation.
+function featureLocalBounds(geometry: NormalizedGeometry): PixelBounds | null {
+  if (geometry.kind === "Polygon") return polygonPixelBounds(geometry);
+  if (geometry.kind === "Point") {
+    const point = geometry.points[0];
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+    return { minX: point.x, maxX: point.x, minY: point.y, maxY: point.y };
+  }
+  return null;
+}
+
+function touchesTileEdge(bounds: PixelBounds): boolean {
+  return (
+    bounds.minX <= AREA_ANCHOR_EDGE_EPSILON ||
+    bounds.minY <= AREA_ANCHOR_EDGE_EPSILON ||
+    bounds.maxX >= 256 - AREA_ANCHOR_EDGE_EPSILON ||
+    bounds.maxY >= 256 - AREA_ANCHOR_EDGE_EPSILON
+  );
+}
+
+async function safeGetVectorTile(
+  source: TileSource,
+  z: number,
+  x: number,
+  y: number
+): Promise<VectorTile | null> {
+  const maxIndex = 2 ** z;
+  if (z < 0 || x < 0 || y < 0 || x >= maxIndex || y >= maxIndex) return null;
+  try {
+    const data = await source.getTile(z, x, y);
+    if (!data) return null;
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    if (bytes.byteLength === 0) return null;
+    return decodeVectorTile(bytes);
+  } catch {
+    return null;
+  }
+}
+
+type FeatureBoundsMatch = { bounds: PixelBounds; isPolygon: boolean };
+
+// A synthetic id used when a feature has no real MVT/OSM id at all (see
+// resolveAreaGlobalAnchor) - such features are matched by name everywhere, exactly
+// like before this file supported id-based matching.
+const SYNTHETIC_FEATURE_ID_PREFIX = "name:";
+
+function findMatchingParkFeatureBoundsById(tile: VectorTile, featureId: string): FeatureBoundsMatch[] {
+  const layer = tile.layers.park;
+  if (!layer) return [];
+  const extent = layer.extent || 4096;
+  const result: FeatureBoundsMatch[] = [];
+  for (let i = 0; i < layer.length; i += 1) {
+    const feature = layer.feature(i);
+    if (getFeatureDataId(feature) !== featureId) continue;
+    const properties = (feature.properties ?? {}) as FeatureProps;
+    if (shouldSuppressNatureLabel(properties)) continue;
+    const geometry = decodeFeatureGeometry(feature, extent);
+    if (!geometry) continue;
+    const bounds = featureLocalBounds(geometry);
+    if (bounds) result.push({ bounds, isPolygon: geometry.kind === "Polygon" });
+  }
+  return result;
+}
+
+function findMatchingParkFeatureBoundsByName(tile: VectorTile, normalizedName: string): FeatureBoundsMatch[] {
+  const layer = tile.layers.park;
+  if (!layer) return [];
+  const extent = layer.extent || 4096;
+  const result: FeatureBoundsMatch[] = [];
+  for (let i = 0; i < layer.length; i += 1) {
+    const feature = layer.feature(i);
+    const properties = (feature.properties ?? {}) as FeatureProps;
+    const label = getFeatureLabel(properties);
+    if (!label || normalizeLabelText(label) !== normalizedName) continue;
+    if (shouldSuppressNatureLabel(properties)) continue;
+    const geometry = decodeFeatureGeometry(feature, extent);
+    if (!geometry) continue;
+    const bounds = featureLocalBounds(geometry);
+    if (bounds) result.push({ bounds, isPolygon: geometry.kind === "Polygon" });
+  }
+  return result;
+}
+
+// Looks up matches for `featureId` in `tile`'s park layer. A real MVT/OSM id is
+// matched strictly - except when `allowNameFallbackForThisTile` is set (used only by
+// the ancestor zoom-out walk) and this specific tile has zero id matches, in which
+// case it falls back to name-matching for that one hop only: ids reliably survive
+// Planetiler's tile-clipping within one zoom level, but aren't guaranteed to survive
+// its cross-zoom generalization, so the fallback is a narrow, explicit safety net
+// rather than something to rely on generally (the same-zoom neighbor scan, where
+// false merges actually matter, never uses it). A synthetic "name:" id (the feature
+// had no real id at all) always matches by name, everywhere - i.e. behaves exactly as
+// this whole mechanism did before id-based matching existed.
+function findMatchingParkFeatureBounds(
+  tile: VectorTile,
+  featureId: string,
+  normalizedName: string,
+  allowNameFallbackForThisTile: boolean
+): FeatureBoundsMatch[] {
+  if (featureId.startsWith(SYNTHETIC_FEATURE_ID_PREFIX)) {
+    return findMatchingParkFeatureBoundsByName(tile, normalizedName);
+  }
+  const byId = findMatchingParkFeatureBoundsById(tile, featureId);
+  if (byId.length > 0 || !allowNameFallbackForThisTile) return byId;
+  return findMatchingParkFeatureBoundsByName(tile, normalizedName);
+}
+
+function unionFeatureBounds(matches: FeatureBoundsMatch[]): PixelBounds | null {
+  return unionPixelBounds(matches.map((match) => match.bounds));
+}
+
+async function computeAreaGlobalAnchor(
+  source: TileSource,
+  featureId: string,
+  normalizedName: string,
+  zoom: number,
+  tileX: number,
+  tileY: number
+): Promise<GlobalAreaAnchor | null> {
+  let lastMatch: { zoom: number; x: number; y: number; bounds: PixelBounds } | null = null;
+
+  for (let ancestorZoom = zoom; ancestorZoom >= MIN_AREA_ANCHOR_ZOOM; ancestorZoom -= 1) {
+    const shift = zoom - ancestorZoom;
+    const ax = tileX >> shift;
+    const ay = tileY >> shift;
+    const ancestorTile = await safeGetVectorTile(source, ancestorZoom, ax, ay);
+    if (!ancestorTile) break;
+    const matches = findMatchingParkFeatureBounds(ancestorTile, featureId, normalizedName, true);
+    if (matches.length === 0) break;
+    const bounds = unionFeatureBounds(matches);
+    if (!bounds) break;
+    lastMatch = { zoom: ancestorZoom, x: ax, y: ay, bounds };
+    // A lone point marker carries no extent information (it's a label reference, not
+    // the area's outline), so it must never by itself end the search early - only a
+    // polygon fragment lets us conclude "the whole area fits in this tile".
+    const hasPolygon = matches.some((match) => match.isPolygon);
+    if (hasPolygon && !touchesTileEdge(bounds)) {
+      const centerX = (bounds.minX + bounds.maxX) / 2;
+      const centerY = (bounds.minY + bounds.maxY) / 2;
+      const scale = 256 * 2 ** ancestorZoom;
+      return { fx: (ax * 256 + centerX) / scale, fy: (ay * 256 + centerY) / scale };
+    }
+  }
+
+  // Fell back out of the loop: the area either vanished while zooming out, or never
+  // fit inside a single tile down to MIN_AREA_ANCHOR_ZOOM. Scan outward from the last
+  // zoom level where it was seen (or the original render tile, if it was never seen
+  // in any ancestor at all) to approximate the overall extent. The seed tile itself
+  // may have nothing at all (e.g. only a point marker was found at an ancestor zoom,
+  // or the name was never found in any ancestor) - that must NOT stop the scan, since
+  // the real polygon fragment(s) can still be sitting in an immediate neighbor tile.
+  const scanZoom = lastMatch?.zoom ?? zoom;
+  const seedX = lastMatch?.x ?? tileX;
+  const seedY = lastMatch?.y ?? tileY;
+
+  let combinedBounds = lastMatch?.bounds ?? null;
+  if (!combinedBounds) {
+    const seedTile = await safeGetVectorTile(source, scanZoom, seedX, seedY);
+    combinedBounds = seedTile
+      ? unionFeatureBounds(findMatchingParkFeatureBounds(seedTile, featureId, normalizedName, false))
+      : null;
+  }
+  let minGX = combinedBounds ? seedX * 256 + combinedBounds.minX : Number.POSITIVE_INFINITY;
+  let maxGX = combinedBounds ? seedX * 256 + combinedBounds.maxX : Number.NEGATIVE_INFINITY;
+  let minGY = combinedBounds ? seedY * 256 + combinedBounds.minY : Number.POSITIVE_INFINITY;
+  let maxGY = combinedBounds ? seedY * 256 + combinedBounds.maxY : Number.NEGATIVE_INFINITY;
+  let foundAny = combinedBounds !== null;
+
+  const directions: Array<[number, number]> = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  for (const [dx, dy] of directions) {
+    let x = seedX;
+    let y = seedY;
+    for (let step = 0; step < AREA_ANCHOR_NEIGHBOR_SCAN_RADIUS; step += 1) {
+      x += dx;
+      y += dy;
+      const neighborTile = await safeGetVectorTile(source, scanZoom, x, y);
+      if (!neighborTile) break;
+      const matches = findMatchingParkFeatureBounds(neighborTile, featureId, normalizedName, false);
+      if (matches.length === 0) break;
+      const bounds = unionFeatureBounds(matches);
+      if (!bounds) break;
+      foundAny = true;
+      minGX = Math.min(minGX, x * 256 + bounds.minX);
+      maxGX = Math.max(maxGX, x * 256 + bounds.maxX);
+      minGY = Math.min(minGY, y * 256 + bounds.minY);
+      maxGY = Math.max(maxGY, y * 256 + bounds.maxY);
+    }
+  }
+
+  if (!foundAny) return null;
+  const scale = 256 * 2 ** scanZoom;
+  return { fx: (minGX + maxGX) / 2 / scale, fy: (minGY + maxGY) / 2 / scale };
+}
+
+// `featureId` is the feature's real MVT/OSM id when available, or a synthetic
+// "name:<normalized>" id otherwise (see the call site in renderNatureLabels) - see
+// findMatchingParkFeatureBounds for how that affects matching, and the "ID vs name"
+// discussion in REQUIREMENTS.md §9 for why a bare id alone isn't used as the cache key
+// (it's only unique within one source layer, not globally).
+function getAreaGlobalAnchor(
+  source: TileSource | undefined,
+  theme: "water" | "nature",
+  featureId: string,
+  normalizedName: string,
+  zoom?: number,
+  tileX?: number,
+  tileY?: number,
+  labelAnchorCache: LabelAnchorCache = defaultLabelAnchorCache
+): Promise<GlobalAreaAnchor | null> {
+  if (!source || theme !== "nature" || !Number.isInteger(zoom) || !Number.isInteger(tileX) || !Number.isInteger(tileY)) {
+    return Promise.resolve(null);
+  }
+  const cacheKey = `${theme}|${featureId}`;
+  let cached = areaAnchorCache.get(cacheKey);
+  if (!cached) {
+    cached = resolveAreaGlobalAnchor(
+      source,
+      featureId,
+      normalizedName,
+      zoom as number,
+      tileX as number,
+      tileY as number,
+      labelAnchorCache
+    ).catch(() => null);
+    areaAnchorCache.set(cacheKey, cached);
+  }
+  return cached;
+}
+
+// Checks the injected (possibly persistent/shared) cache before falling back to the
+// live ancestor/neighbor-scan computation, and writes the result back so future
+// lookups - in this process or, once backed by a shared store, in others - don't
+// repeat the same archive reads.
+async function resolveAreaGlobalAnchor(
+  source: TileSource,
+  featureId: string,
+  normalizedName: string,
+  zoom: number,
+  tileX: number,
+  tileY: number,
+  labelAnchorCache: LabelAnchorCache
+): Promise<GlobalAreaAnchor | null> {
+  const key: LabelAnchorKey = { sourceLayer: "park", featureId };
+  const persisted = await labelAnchorCache.get(key);
+  if (persisted !== undefined) return persisted;
+
+  const computed = await computeAreaGlobalAnchor(source, featureId, normalizedName, zoom, tileX, tileY);
+  await labelAnchorCache.set(key, computed);
+  return computed;
+}
+
+// Given a resolved global anchor, decide whether the CURRENT tile is the one that
+// should render the label, and if so, at which local (0..256) position.
+function resolveOwnedLocalAnchor(
+  globalAnchor: GlobalAreaAnchor,
+  zoom: number,
+  tileX: number,
+  tileY: number
+): { x: number; y: number } | null {
+  const scale = 256 * 2 ** zoom;
+  const gx = globalAnchor.fx * scale;
+  const gy = globalAnchor.fy * scale;
+  const ownerX = Math.floor(gx / 256);
+  const ownerY = Math.floor(gy / 256);
+  if (ownerX !== tileX || ownerY !== tileY) return null;
+  return { x: gx - ownerX * 256, y: gy - ownerY * 256 };
+}
+
 function buildGlobalLabelBucketKey(
   theme: "water" | "nature",
   labelText: string,
@@ -480,13 +958,15 @@ function buildGlobalLabelBucketKey(
   return `${theme}|${normalized}|${Math.floor(globalX / bucketSize)}|${Math.floor(globalY / bucketSize)}`;
 }
 
-function renderNatureLabels(
+async function renderNatureLabels(
   tile: VectorTile,
   labelFragments: string[],
   zoomLevel: number | undefined,
   tileX: number | undefined,
-  tileY: number | undefined
-): void {
+  tileY: number | undefined,
+  source: TileSource | undefined,
+  labelAnchorCache: LabelAnchorCache
+): Promise<void> {
   const waterTextStyle = getNatureTextStyle("water");
   const natureTextStyle = getNatureTextStyle("nature");
   if (!waterTextStyle && !natureTextStyle) return;
@@ -548,13 +1028,13 @@ function renderNatureLabels(
         if (!labelStyle) continue;
         const renderAttributes = buildFeatureRenderAttributes(feature as { id?: unknown; properties?: Record<string, unknown> });
         if (config.lineLabels && geometry.kind === "LineString") {
-          const longestLine = pickLongestLine(geometry.lines);
+          const longestLine = simplifyLineForLabel(pickLongestLine(geometry.lines));
           if (longestLine.length < 2) continue;
           const pathData = lineToPathData(longestLine);
           if (!pathData) continue;
-          const anchor = longestLine[Math.floor(longestLine.length / 2)] ?? null;
-          const bounds = buildAnchoredLabelBounds(anchor, labelText, labelStyle);
+          const bounds = buildLineLabelBounds(longestLine, labelText, labelStyle);
           if (!bounds) continue;
+          const anchor = longestLine[Math.floor(longestLine.length / 2)] ?? null;
           const dedupKey = buildGlobalLabelBucketKey(
             config.theme,
             labelText,
@@ -583,10 +1063,48 @@ function renderNatureLabels(
           continue;
         }
 
-        const anchor = getLabelAnchor(geometry);
+        let anchor = getLabelAnchor(geometry);
+        let usesGlobalAreaAnchor = false;
+
+        // For polygon-anchored nature labels (parks/reserves/etc.), a single named
+        // area can be split into many disjoint per-tile fragments - including a mix
+        // of polygon pieces and separate point representations of the same name. Try
+        // to resolve one canonical position for the whole area (memoized per feature
+        // id, so this is only ever computed once regardless of how many fragments/
+        // tiles ask); if this tile isn't the owner of that position, skip this
+        // fragment entirely instead of placing a local duplicate. Grouping is by the
+        // feature's own MVT/OSM id where available (falls back to name only when no
+        // id exists at all) - names alone can be ambiguous (see REQUIREMENTS.md §9:
+        // several distinct real-world features can share one name).
+        const normalizedLabelText = normalizeLabelText(labelText);
+        const featureId =
+          getFeatureDataId(feature as { id?: unknown; properties?: Record<string, unknown> }) ??
+          `${SYNTHETIC_FEATURE_ID_PREFIX}${normalizedLabelText}`;
+        const globalAnchor = await getAreaGlobalAnchor(
+          source,
+          config.theme,
+          featureId,
+          normalizedLabelText,
+          zoomLevel,
+          tileX,
+          tileY,
+          labelAnchorCache
+        );
+        if (globalAnchor) {
+          if (!Number.isInteger(zoomLevel) || !Number.isInteger(tileX) || !Number.isInteger(tileY)) {
+            continue;
+          }
+          const owned = resolveOwnedLocalAnchor(globalAnchor, zoomLevel as number, tileX as number, tileY as number);
+          if (!owned) continue;
+          anchor = owned;
+          usesGlobalAreaAnchor = true;
+        }
+
         const bounds = buildAnchoredLabelBounds(anchor, labelText, labelStyle);
         if (!bounds) continue;
-        if (shouldSuppressSmallNatureReserveLabel(properties, geometry, bounds)) continue;
+        if (!usesGlobalAreaAnchor && shouldSuppressSmallNatureReserveLabel(properties, geometry, bounds)) {
+          continue;
+        }
         const dedupKey = buildGlobalLabelBucketKey(
           config.theme,
           labelText,
@@ -707,10 +1225,13 @@ function renderRoadLabels(
       if (!shouldRenderRoadLabelByZoom(roadClass, zoomLevel)) continue;
       const textStyle = getTextStyleForLayer("roads");
       if (!textStyle) continue;
-      const longestLine = pickLongestLine(geometry.lines);
+      const longestLine = simplifyLineForLabel(pickLongestLine(geometry.lines));
       if (longestLine.length < 2) continue;
       const pathData = lineToPathData(longestLine);
       if (!pathData) continue;
+      // The text renders along the line's actual curve, centered at 50% arc length;
+      // require the portion of the line it will actually cover to stay in the tile.
+      if (!buildLineLabelBounds(longestLine, labelText, textStyle)) continue;
       const dedupKey = `${labelText}|${pathData}`;
       if (seenRoadLabels.has(dedupKey)) continue;
       seenRoadLabels.add(dedupKey);
@@ -730,10 +1251,12 @@ function renderRoadLabels(
   }
 }
 
-export function renderTileToSvg(
+export async function renderTileToSvg(
   tileBuffer: ArrayBuffer | Uint8Array,
-  options: RenderOptions = {}
-): string | null {
+  options: RenderOptions = {},
+  archive?: TileSource,
+  labelAnchorCache: LabelAnchorCache = defaultLabelAnchorCache
+): Promise<string | null> {
   if (!tileBuffer || tileBuffer.byteLength === 0) return null;
 
   let tile: VectorTile;
@@ -764,7 +1287,7 @@ export function renderTileToSvg(
   }
 
   if (renderNatureLabelsEnabled) {
-    renderNatureLabels(tile, natureLabelFragments, zoomLevel, tileX, tileY);
+    await renderNatureLabels(tile, natureLabelFragments, zoomLevel, tileX, tileY, archive, labelAnchorCache);
   }
 
   const overlayContent = [

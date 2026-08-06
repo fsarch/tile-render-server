@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { ConfigService } from "@nestjs/config";
 import { FsArchAppBuilder } from "@fsarch/server";
 import { AppModule } from "./app.module.js";
+import { DATABASE_OPTIONS } from "./database/index.js";
 
 function parsePort(value: unknown, fallback: number): number {
   const port = Number(value);
@@ -22,6 +23,7 @@ async function bootstrap(): Promise<void> {
       version: "1.0.0",
       path: "docs",
     })
+    .setDatabase(DATABASE_OPTIONS)
     .build();
 
   const configService = app.get(ConfigService);

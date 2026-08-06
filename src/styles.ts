@@ -433,6 +433,13 @@ export function isFeatureAllowedForLayer(
     if (roadClass.endsWith("_construction")) return false;
     return isRoadClassVisibleAtZoom(roadClass, zoom);
   }
+  if (layerName === "boundaries") {
+    // Only country/state/region-level boundaries (admin_level 1-4); lower
+    // administrative subdivisions (county/municipality/etc.) are not rendered.
+    const adminLevel = toNumberOrNull(properties.admin_level);
+    if (adminLevel === null) return false;
+    return adminLevel >= 1 && adminLevel <= 4;
+  }
   return true;
 }
 

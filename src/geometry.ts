@@ -99,6 +99,50 @@ export function decodeFeatureGeometry(
   return null;
 }
 
+function perpendicularDistance(point: Point2D, lineStart: Point2D, lineEnd: Point2D): number {
+  const dx = lineEnd.x - lineStart.x;
+  const dy = lineEnd.y - lineStart.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) {
+    return Math.hypot(point.x - lineStart.x, point.y - lineStart.y);
+  }
+  const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lengthSquared;
+  const clampedT = Math.max(0, Math.min(1, t));
+  const projectedX = lineStart.x + clampedT * dx;
+  const projectedY = lineStart.y + clampedT * dy;
+  return Math.hypot(point.x - projectedX, point.y - projectedY);
+}
+
+// Douglas-Peucker line simplification: drops points that stay within `tolerance` of
+// the straight line between their neighbors, collapsing tight zigzags into longer,
+// straighter runs while keeping the overall shape. Used to smooth the path a label's
+// text follows (rivers/roads that wiggle a lot otherwise flip each letter's angle),
+// not the actual rendered geometry of the feature itself.
+export function simplifyLine(points: Point2D[], tolerance: number): Point2D[] {
+  if (!Array.isArray(points) || points.length < 3 || tolerance <= 0) {
+    return points;
+  }
+
+  const end = points.length - 1;
+  let maxDistance = 0;
+  let splitIndex = 0;
+  for (let i = 1; i < end; i += 1) {
+    const distance = perpendicularDistance(points[i], points[0], points[end]);
+    if (distance > maxDistance) {
+      maxDistance = distance;
+      splitIndex = i;
+    }
+  }
+
+  if (maxDistance <= tolerance) {
+    return [points[0], points[end]];
+  }
+
+  const left = simplifyLine(points.slice(0, splitIndex + 1), tolerance);
+  const right = simplifyLine(points.slice(splitIndex), tolerance);
+  return left.slice(0, -1).concat(right);
+}
+
 export function getLabelAnchor(geometry: NormalizedGeometry): Point2D | null {
   if (geometry.kind === "Point") {
     return geometry.points[0] ?? null;

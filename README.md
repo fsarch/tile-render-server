@@ -6,8 +6,9 @@
 ## REST API
 
 1. `npm install`
-2. `npm run build`
-3. `npm start`
+2. `cp config.example.yaml config.yaml` und die `database:`-Zugangsdaten eintragen (siehe [Datenbank](#datenbank))
+3. `npm run build`
+4. `npm start`
 
 Standardroute:
 
@@ -27,7 +28,23 @@ Swagger:
 http://127.0.0.1:3000/docs
 ```
 
-Die Laufzeitkonfiguration liegt in `config.yaml`.
+Die Laufzeitkonfiguration liegt in `config.yaml` (gitignored, nie committen — Vorlage: `config.example.yaml`).
+
+## Datenbank
+
+`npm start` (die REST-API) benötigt eine erreichbare Postgres-Datenbank — nicht für die Kartendaten selbst (die kommen weiterhin ausschließlich aus `planet.pmtiles`), sondern als geteilter, persistenter Cache für kachelübergreifend aufgelöste Label-Positionen (z. B. große Naturschutzgebiete, die über viele Kacheln verteilt sind). Migrationen laufen beim Start automatisch (`migrationsRun: true`).
+
+`npm test` und `npm run render` (Batch-CLI) benötigen **keine** Datenbank.
+
+```yaml
+database:
+  type: postgres
+  host: localhost
+  port: 5432 # muss explizit gesetzt werden, sonst Default 26257 (CockroachDB)
+  username: maps_converter
+  password: ...
+  database: maps_converter
+```
 
 ## Example Viewer
 

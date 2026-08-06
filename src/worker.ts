@@ -63,14 +63,18 @@ port.on("message", async (job: JobMessage) => {
       return;
     }
 
-    const svg = renderTileToSvg(tileData, {
-      labels: config.labels,
-      roadLabels: config.roadLabels,
-      natureLabels: config.natureLabels,
-      zoom: z,
-      tileX: x,
-      tileY: y,
-    });
+    const svg = await renderTileToSvg(
+      tileData,
+      {
+        labels: config.labels,
+        roadLabels: config.roadLabels,
+        natureLabels: config.natureLabels,
+        zoom: z,
+        tileX: x,
+        tileY: y,
+      },
+      archive
+    );
     if (!svg) {
       port.postMessage({ type: "result", status: "skipped", z, x, y, reason: "invalid" });
       return;

@@ -8,7 +8,10 @@
     "start": "fsarch-server start",
     "render": "node dist/index.js",
     "example": "node dist/example-server.js --port 4173 --api-base http://127.0.0.1:3000",
-    "test": "npm run build && vitest run"
+    "test": "npm run build && vitest run",
+    "migration:create": "typeorm-ts-node-esm ./node_modules/typeorm/cli.js migration:create ./src/database/migrations/$npm_config_name",
+    "migration:run": "typeorm-ts-node-esm -d src/database/data-source.ts migration:run",
+    "migration:revert": "typeorm-ts-node-esm -d src/database/data-source.ts migration:revert"
   },
   "keywords": [],
   "author": "",
@@ -22,10 +25,14 @@
     "@nestjs/core": "^11.1.28",
     "@nestjs/platform-express": "^11.1.28",
     "@nestjs/swagger": "^11.2.0",
+    "@nestjs/typeorm": "^11.0.3",
+    "js-yaml": "^5.2.3",
     "minimist": "^1.2.8",
     "pbf": "^5.1.2",
+    "pg": "^8.22.0",
     "pmtiles": "^4.4.1",
-    "reflect-metadata": "^0.2.2"
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^1.1.0"
   },
   "devDependencies": {
     "@types/minimist": "^1.2.5",

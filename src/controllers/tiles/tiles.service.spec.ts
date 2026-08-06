@@ -3,6 +3,15 @@ import type { ConfigService } from "@nestjs/config";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { TilesService } from "./tiles.service.js";
+import type { PostgresLabelAnchorCache } from "./label-anchor-cache.postgres.js";
+
+// Fake stub: TilesService only threads this through to renderSvg, never calls its
+// methods directly - none of these tests exercise the label-anchor-cache mechanism
+// itself (see renderer.spec.ts and label-anchor-cache.postgres.spec.ts for that).
+const fakeLabelAnchorCache = {
+  get: vi.fn(),
+  set: vi.fn(),
+} as unknown as PostgresLabelAnchorCache;
 
 class TestTilesService extends TilesService {
   constructor(
@@ -14,14 +23,14 @@ class TestTilesService extends TilesService {
     }>,
     private readonly renderSvgMock: (tileBuffer: ArrayBuffer | Uint8Array, options: Record<string, unknown>) => string | null
   ) {
-    super(configService);
+    super(configService, fakeLabelAnchorCache);
   }
 
   protected override openArchive(inputPath: string) {
     return this.openArchiveMock(inputPath);
   }
 
-  protected override renderSvg(tileBuffer: ArrayBuffer | Uint8Array, options: Record<string, unknown>) {
+  protected override async renderSvg(tileBuffer: ArrayBuffer | Uint8Array, options: Record<string, unknown>) {
     return this.renderSvgMock(tileBuffer, options);
   }
 }
