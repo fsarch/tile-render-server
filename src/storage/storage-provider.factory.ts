@@ -1,9 +1,10 @@
-import type { CacheStorageConfig, StorageConfig } from "./storage-config.types.js";
+import type { CacheLayerConfig, CacheStorageConfig, StorageConfig } from "./storage-config.types.js";
 import { FileSystemStorageProvider } from "./filesystem-storage.provider.js";
 import { LayeredStorageProvider } from "./layered-storage.provider.js";
 import { MemoryStorageProvider } from "./memory-storage.provider.js";
 import { S3StorageProvider } from "./s3-storage.provider.js";
 import type { IStorageProvider } from "./storage-provider.interface.js";
+import { ZoomRestrictedStorageProvider } from "./zoom-restricted-storage.provider.js";
 
 export class StorageProviderFactory {
   // For storage.data: a single filesystem or S3 backend - no memory layer, no
@@ -26,8 +27,9 @@ export class StorageProviderFactory {
     throw new Error(`Unknown storage type: ${(config as { type?: unknown }).type}`);
   }
 
-  // For storage.cache only: everything `create` supports, plus a `memory` backend and
-  // layering (an array of configs, checked in order - see CacheStorageConfig).
+  // For storage.cache only: everything `create` supports, plus a `memory` backend,
+  // layering (an array of configs, checked in order), and a zoom range on any single
+  // layer - see CacheStorageConfig/CacheLayerConfig.
   static createCache(config: CacheStorageConfig): IStorageProvider {
     if (Array.isArray(config)) {
       if (config.length === 0) {
@@ -36,10 +38,16 @@ export class StorageProviderFactory {
       return new LayeredStorageProvider(config.map((layer) => StorageProviderFactory.createCache(layer)));
     }
 
-    if (typeof config !== "string" && config.type === "memory") {
-      return new MemoryStorageProvider(config.config);
+    if (typeof config === "string") {
+      return StorageProviderFactory.create(config);
     }
 
-    return StorageProviderFactory.create(config);
+    const { minZoom, maxZoom, ...rest } = config as CacheLayerConfig;
+    const provider = rest.type === "memory" ? new MemoryStorageProvider(rest.config) : StorageProviderFactory.create(rest);
+
+    if (minZoom === undefined && maxZoom === undefined) {
+      return provider;
+    }
+    return new ZoomRestrictedStorageProvider(provider, minZoom, maxZoom);
   }
 }

@@ -86,7 +86,24 @@ storage:
     - ./cache                # oder S3 — jede der obigen Formen ist als weitere Schicht erlaubt
 ```
 
-Beim Lesen wird Schicht für Schicht geprüft — "schau zuerst im Memory-Cache, wenn dort nichts ist, schau in der nächsten Cache-Schicht". Ein Treffer in einer langsameren Schicht wird automatisch in alle schnelleren zurückgeschrieben, damit der nächste Request für dieselbe Kachel aus dem Memory-Cache bedient wird. Geschrieben wird bei einem Miss immer in alle Schichten. Der Memory-Cache ist pro Prozess und geht bei einem Neustart verloren — er ist als schnelle erste Schicht vor einer persistenten gedacht, nicht als Ersatz dafür. Eviction erfolgt nach LRU, sobald `maxItems` oder `maxBytes` überschritten wird.
+Beim Lesen wird Schicht für Schicht geprüft — "schau zuerst im Memory-Cache, wenn dort nichts ist, schau in der nächsten Cache-Schicht". Ein Treffer in einer langsameren Schicht wird automatisch in alle schnelleren zurückgeschrieben, damit der nächste Request für dieselbe Kachel aus dem Memory-Cache bedient wird. Geschrieben wird bei einem Miss immer in alle (passenden, s.u.) Schichten. Der Memory-Cache ist pro Prozess und geht bei einem Neustart verloren — er ist als schnelle erste Schicht vor einer persistenten gedacht, nicht als Ersatz dafür. Eviction erfolgt nach LRU, sobald `maxItems` oder `maxBytes` überschritten wird.
+
+Jede einzelne Schicht lässt sich zusätzlich auf einen Zoom-Bereich beschränken (`minZoom`/`maxZoom`, beide optional, inklusiv) — z.B. um eine S3-Schicht nicht mit (insbesondere überzoomten) tiefen Zoomstufen vollzupacken:
+
+```yaml
+storage:
+  cache:
+    - type: memory
+      config:
+        maxItems: 1000
+    - type: s3
+      maxZoom: 14 # nur z0-14 landen in S3, überzoomte z15+ nie
+      config:
+        bucket: my-tile-cache
+        region: eu-central-1
+```
+
+Eine Zoomstufe, die von keiner Schicht abgedeckt wird, wird einfach gar nicht gecacht (jedes Mal frisch gerendert) statt einen Fehler zu werfen.
 
 Die Batch-CLI ist von `storage.*` komplett unberührt — `--input`/`--output` bleiben immer lokale Dateisystempfade, unabhängig von `config.yaml`.
 

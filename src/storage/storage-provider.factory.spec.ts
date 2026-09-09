@@ -4,6 +4,7 @@ import { FileSystemStorageProvider } from "./filesystem-storage.provider.js";
 import { LayeredStorageProvider } from "./layered-storage.provider.js";
 import { MemoryStorageProvider } from "./memory-storage.provider.js";
 import { S3StorageProvider } from "./s3-storage.provider.js";
+import { ZoomRestrictedStorageProvider } from "./zoom-restricted-storage.provider.js";
 
 describe("StorageProviderFactory.create (storage.data)", () => {
   it("creates a FileSystemStorageProvider from a bare string (legacy shorthand)", () => {
@@ -55,5 +56,35 @@ describe("StorageProviderFactory.createCache (storage.cache)", () => {
 
   it("throws on an empty array", () => {
     expect(() => StorageProviderFactory.createCache([])).toThrow(/must not be empty/i);
+  });
+
+  it("leaves a layer unwrapped when it has no zoom range", () => {
+    const provider = StorageProviderFactory.createCache({ type: "memory" });
+    expect(provider).toBeInstanceOf(MemoryStorageProvider);
+    expect(provider).not.toBeInstanceOf(ZoomRestrictedStorageProvider);
+  });
+
+  it("wraps a layer with a zoom range in ZoomRestrictedStorageProvider", () => {
+    expect(StorageProviderFactory.createCache({ type: "memory", maxZoom: 14 })).toBeInstanceOf(
+      ZoomRestrictedStorageProvider
+    );
+    expect(StorageProviderFactory.createCache({ type: "memory", minZoom: 15 })).toBeInstanceOf(
+      ZoomRestrictedStorageProvider
+    );
+  });
+
+  it("applies zoom ranges to individual layers within an array", async () => {
+    const provider = StorageProviderFactory.createCache([
+      { type: "memory" },
+      { type: "memory", maxZoom: 14 },
+    ]);
+
+    // A deep-zoom write should only land in the unrestricted (first) layer.
+    await provider.writeFile("v1/18/1/1.svg", Buffer.from("deep"));
+    // A shallow-zoom write should land in both.
+    await provider.writeFile("v1/10/1/1.svg", Buffer.from("shallow"));
+
+    expect(await provider.exists("v1/18/1/1.svg")).toBe(true);
+    expect(await provider.exists("v1/10/1/1.svg")).toBe(true);
   });
 });

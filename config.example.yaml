@@ -54,6 +54,20 @@ storage:
         maxItems: 1000
         maxBytes: 134217728 # 128 MiB
     - ./cache
+  #
+  # Any single layer can also be restricted to a zoom range (minZoom/maxZoom, both
+  # optional, inclusive) - e.g. to keep an S3 layer from filling up with deep-zoom
+  # tiles once overzoom (tiles.maxZoom above) is enabled. A zoom outside every layer's
+  # range simply isn't cached at all (always re-rendered), not an error:
+  # cache:
+  #   - type: memory
+  #     config:
+  #       maxItems: 1000
+  #   - type: s3
+  #     maxZoom: 14 # only z0-14 ever get cached in S3 - z15+ (overzoomed) never do
+  #     config:
+  #       bucket: my-tile-cache
+  #       region: eu-central-1
 
 # Shared, persistent cache for cross-tile label anchor positions (see
 # src/core/label-anchor-cache.ts). Required for `npm start` - not used by `npm test` or the
