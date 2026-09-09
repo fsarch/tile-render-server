@@ -18,28 +18,28 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1128.0",
-    "@fsarch/server": "^0.1.0",
+    "@aws-sdk/client-s3": "^3.1129.0",
+    "@fsarch/server": "^0.2.7",
     "@mapbox/vector-tile": "^3.0.0",
-    "@nestjs/common": "^11.1.28",
-    "@nestjs/config": "^4.0.4",
-    "@nestjs/core": "^11.1.28",
-    "@nestjs/platform-express": "^11.1.28",
-    "@nestjs/swagger": "^11.2.0",
-    "@nestjs/typeorm": "^11.0.3",
-    "js-yaml": "^5.2.3",
+    "@nestjs/common": "^12.0.1",
+    "@nestjs/config": "^12.0.0",
+    "@nestjs/core": "^12.0.1",
+    "@nestjs/platform-express": "^12.0.1",
+    "@nestjs/swagger": "^12.0.1",
+    "@nestjs/typeorm": "^12.0.1",
+    "js-yaml": "^5.4.1",
     "minimist": "^1.2.8",
     "pbf": "^5.1.2",
-    "pg": "^8.22.0",
-    "pmtiles": "^4.4.1",
+    "pg": "^8.23.0",
+    "pmtiles": "^4.5.0",
     "reflect-metadata": "^0.2.2",
-    "typeorm": "^1.1.0"
+    "typeorm": "^1.1.1"
   },
   "devDependencies": {
     "@types/minimist": "^1.2.5",
-    "@types/node": "^24.3.0",
-    "@vitest/coverage-v8": "^4.1.10",
-    "typescript": "^5.9.2",
-    "vitest": "^4.1.10"
+    "@types/node": "^24.13.4",
+    "@vitest/coverage-v8": "^4.1.11",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
   }
 }
