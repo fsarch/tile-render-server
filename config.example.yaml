@@ -76,9 +76,9 @@ database:
   type: postgres
   host: localhost
   port: 5432 # must be explicit: @fsarch/server defaults to 26257 (CockroachDB) otherwise
-  username: maps_converter
+  username: tile_render_server
   password: replace-me
-  database: maps_converter
+  database: tile_render_server
 
 # Copy this file to config.yaml (gitignored - never commit real credentials) and fill
 # in your actual database settings.

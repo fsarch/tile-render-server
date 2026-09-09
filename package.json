@@ -1,5 +1,5 @@
 {
-  "name": "maps-converter",
+  "name": "tile-render-server",
   "version": "0.0.0",
   "description": "On-demand SVG tile API backed by PMTiles",
   "main": "dist/main.js",

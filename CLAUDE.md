@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`maps-converter` renders SVG map tiles from a Planetiler `planet.pmtiles` dataset (Mapbox Vector Tile format). It has two entrypoints that share the same rendering core:
+`tile-render-server` renders SVG map tiles from a Planetiler `planet.pmtiles` dataset (Mapbox Vector Tile format). It has two entrypoints that share the same rendering core:
 
 1. **On-demand REST API** (`@fsarch/server`/NestJS) — `GET /v1/tiles/:z/:x/:y.svg`, versioned, with Swagger docs and a health endpoint.
 2. **Batch CLI renderer** — walks every tile in a PMTiles archive up to a max zoom and writes `output/{z}/{x}/{y}.svg` using a worker-thread pool.

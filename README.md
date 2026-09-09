@@ -1,7 +1,7 @@
 
-# maps-converter
+# tile-render-server
 
-`maps-converter` kann SVG-Tiles weiter batchweise rendern und stellt jetzt zusätzlich eine `@fsarch/server`-basierte REST-API für On-Demand-Rendering bereit.
+`tile-render-server` kann SVG-Tiles weiter batchweise rendern und stellt jetzt zusätzlich eine `@fsarch/server`-basierte REST-API für On-Demand-Rendering bereit.
 
 ## REST API
 
@@ -42,9 +42,9 @@ database:
   type: postgres
   host: localhost
   port: 5432 # muss explizit gesetzt werden, sonst Default 26257 (CockroachDB)
-  username: maps_converter
+  username: tile_render_server
   password: ...
-  database: maps_converter
+  database: tile_render_server
 ```
 
 ## Storage

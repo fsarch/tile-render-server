@@ -9,7 +9,7 @@ describe("FileSystemStorageProvider", () => {
   let provider: FileSystemStorageProvider;
 
   beforeEach(async () => {
-    baseDir = await mkdtemp(join(tmpdir(), "maps-converter-storage-test-"));
+    baseDir = await mkdtemp(join(tmpdir(), "tile-render-server-storage-test-"));
     provider = new FileSystemStorageProvider(baseDir);
   });
 

@@ -5,11 +5,11 @@ import { DATABASE_OPTIONS } from "./database/index.js";
 
 async function bootstrap(): Promise<void> {
   const app = await new FsArchAppBuilder(AppModule, {
-    name: "maps-converter",
+    name: "tile-render-server",
     version: "1.0.0",
   })
     .addSwagger({
-      title: "maps-converter API",
+      title: "tile-render-server API",
       description: "On-demand rendering of PMTiles vector tiles to SVG.",
       version: "1.0.0",
       path: "docs",
