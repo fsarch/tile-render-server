@@ -24,16 +24,15 @@ tiles:
 storage:
   # storage.data: where dataset_versions.path is resolved from (a local base directory,
   # or an S3 bucket/prefix) - "." reproduces the old tiles.input behavior (paths
-  # relative to the project root).
+  # relative to the project root). Always a single filesystem-or-S3 backend - no
+  # memory layer, no layering (a multi-GB pmtiles archive doesn't benefit from an
+  # in-memory cache the way small rendered tiles do).
   data: .
   # storage.cache: where rendered (pre-template) SVG tiles are cached, keyed by
-  # dataset_version id + z/x/y - see REQUIREMENTS.md §18. A fresh/empty directory (or
-  # bucket) is fine; it's populated on demand and never needs to be seeded.
-  cache: ./cache
-  # Both accept the same two shapes; a bare string is shorthand for
-  # `{ type: filesystem, config: { path: <string> } }`. Uncomment for S3 (works
-  # identically for storage.cache):
-  # data:
+  # dataset_version id + z/x/y - see REQUIREMENTS.md §19. A fresh/empty directory (or
+  # bucket) is fine; it's populated on demand and never needs to be seeded. Uncomment
+  # for S3 (works identically for storage.data, minus the memory/array support below):
+  # cache:
   #   type: s3
   #   config:
   #     bucket: my-pmtiles-bucket
@@ -42,6 +41,19 @@ storage:
   #     secretAccessKey: ...       # required together with accessKeyId
   #     endpoint: https://...      # optional, for S3-compatible services (MinIO etc.)
   #     prefix: datasets/          # optional, prefixes every key
+  #
+  # Unlike storage.data, storage.cache also accepts a "memory" backend and layering (an
+  # array, checked in order): "look in the memory cache first, and if it's not there,
+  # check the next cache layer". A hit found in a slower layer is copied back into
+  # every faster one, so the next request for the same tile hits sooner. maxItems/
+  # maxBytes are both optional (default 1000 / 128 MiB) - least-recently-used entries
+  # are evicted once either limit is exceeded.
+  cache:
+    - type: memory
+      config:
+        maxItems: 1000
+        maxBytes: 134217728 # 128 MiB
+    - ./cache
 
 # Shared, persistent cache for cross-tile label anchor positions (see
 # src/core/label-anchor-cache.ts). Required for `npm start` - not used by `npm test` or the

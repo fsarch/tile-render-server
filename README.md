@@ -74,6 +74,20 @@ storage:
 
 `storage.cache` speichert dort die **gerenderte, noch ungestylte** Kachel (Schlüssel `{datasetVersionId}/{z}/{x}/{y}.svg`) — genau das, was die Trennung von Rendering und Styling (siehe unten) überhaupt erst ermöglicht: ein Cache-Eintrag bedient jedes Template, ein Template-Wechsel invalidiert den Cache nie. Der Ordner/Bucket muss nicht vorbefüllt werden, er füllt sich bei Bedarf.
 
+**Nur `storage.cache`** (nicht `storage.data`) akzeptiert zusätzlich einen `memory`-Backend-Typ sowie eine Liste mehrerer Schichten, die der Reihe nach durchsucht werden:
+
+```yaml
+storage:
+  cache:
+    - type: memory
+      config:
+        maxItems: 1000       # optional, Default 1000
+        maxBytes: 134217728  # optional, Default 128 MiB
+    - ./cache                # oder S3 — jede der obigen Formen ist als weitere Schicht erlaubt
+```
+
+Beim Lesen wird Schicht für Schicht geprüft — "schau zuerst im Memory-Cache, wenn dort nichts ist, schau in der nächsten Cache-Schicht". Ein Treffer in einer langsameren Schicht wird automatisch in alle schnelleren zurückgeschrieben, damit der nächste Request für dieselbe Kachel aus dem Memory-Cache bedient wird. Geschrieben wird bei einem Miss immer in alle Schichten. Der Memory-Cache ist pro Prozess und geht bei einem Neustart verloren — er ist als schnelle erste Schicht vor einer persistenten gedacht, nicht als Ersatz dafür. Eviction erfolgt nach LRU, sobald `maxItems` oder `maxBytes` überschritten wird.
+
 Die Batch-CLI ist von `storage.*` komplett unberührt — `--input`/`--output` bleiben immer lokale Dateisystempfade, unabhängig von `config.yaml`.
 
 ## Datasets und Themes

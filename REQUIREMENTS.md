@@ -216,3 +216,7 @@ Implementation requirement from follow-up:
   - The cache key must include the active dataset version's identity, not just `z`/`x`/`y` - otherwise, after switching `dataset_versions` (and restarting, per §18), a stale cache entry from the previous dataset could be served under coordinates that coincidentally match in the new one.
   - A cache hit must still go through template resolution/injection (§18) - the cache holds one shared, template-agnostic render; the active/requested template is applied fresh on every request regardless of whether the render came from cache or was just computed.
   - A cache miss must render normally, then populate the cache, then proceed with template injection as usual.
+- `storage.cache` (only - not `storage.data`) must additionally support an in-process memory backend, and layering multiple backends together:
+  - A memory backend must be bounded (by entry count and/or total byte size, both configurable) and evict least-recently-used entries once a bound is exceeded - an unbounded in-memory tile cache is not acceptable.
+  - Layering must let multiple cache backends be configured together and checked in order (e.g. memory first, then a persistent filesystem-or-S3 layer) - "look in the memory cache first, and if it's not there, check the next cache layer". A hit found in a slower layer must be written back into every faster layer, so a subsequent request for the same tile is served from the fast layer.
+  - Writes (populating the cache after a miss) must be applied to every configured layer, not just the fastest one.
