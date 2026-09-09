@@ -1,11 +1,11 @@
 import { NotFoundException } from "@nestjs/common";
 import type { ConfigService } from "@nestjs/config";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { TilesService } from "./tiles.service.js";
 import type { PostgresLabelAnchorCache } from "../../repositories/label-anchor/label-anchor-cache.postgres.js";
 import type { DatasetVersionService } from "../../repositories/dataset-version/dataset-version.service.js";
 import type { TemplateService } from "../../repositories/template/template.service.js";
+import type { IStorageProvider } from "../../storage/storage-provider.interface.js";
 
 // Fake stub: TilesService only threads this through to renderSvg, never calls its
 // methods directly - none of these tests exercise the label-anchor-cache mechanism
@@ -29,6 +29,21 @@ function createTemplateService(colors: Record<string, string> | null = null): Te
   } as unknown as TemplateService;
 }
 
+// Defaults to an always-miss cache, so existing tests exercise the same
+// render-from-scratch path they did before caching existed, unless a test overrides
+// `exists`/`readFile` to simulate a hit.
+function createStorageProvider(overrides: Partial<IStorageProvider> = {}): IStorageProvider {
+  return {
+    readFile: vi.fn(),
+    writeFile: vi.fn().mockResolvedValue(undefined),
+    readRange: vi.fn(),
+    exists: vi.fn().mockResolvedValue(false),
+    mkdir: vi.fn().mockResolvedValue(undefined),
+    deleteFile: vi.fn(),
+    ...overrides,
+  };
+}
+
 class TestTilesService extends TilesService {
   constructor(
     configService: ConfigService,
@@ -39,9 +54,11 @@ class TestTilesService extends TilesService {
     }>,
     private readonly renderSvgMock: (tileBuffer: ArrayBuffer | Uint8Array, options: Record<string, unknown>) => string | null,
     datasetVersionService: DatasetVersionService = createDatasetVersionService(),
-    templateService: TemplateService = createTemplateService()
+    templateService: TemplateService = createTemplateService(),
+    dataStorage: IStorageProvider = createStorageProvider(),
+    cacheStorage: IStorageProvider = createStorageProvider()
   ) {
-    super(configService, fakeLabelAnchorCache, datasetVersionService, templateService);
+    super(configService, fakeLabelAnchorCache, datasetVersionService, templateService, dataStorage, cacheStorage);
   }
 
   protected override openArchive(inputPath: string) {
@@ -86,7 +103,7 @@ describe("TilesService", () => {
 
     expect(svg).toBe("<svg />");
     expect(openArchive).toHaveBeenCalledTimes(1);
-    expect(openArchive).toHaveBeenCalledWith(resolve("./planet.pmtiles"));
+    expect(openArchive).toHaveBeenCalledWith("./planet.pmtiles");
     expect(renderTile).toHaveBeenCalledWith(
       expect.any(Uint8Array),
       expect.objectContaining({
@@ -254,6 +271,89 @@ describe("TilesService", () => {
     );
 
     await expect(service.renderTileSvg(3, 4, 5, "does-not-exist")).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  describe("rendered-tile cache (storage.cache)", () => {
+    it("renders and writes to the cache on a miss, keyed by dataset version and z/x/y", async () => {
+      const getTile = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]));
+      const renderTile = vi.fn().mockReturnValue("<svg>fresh</svg>");
+      const cacheStorage = createStorageProvider();
+      const service = new TestTilesService(
+        createConfigService({}),
+        vi.fn().mockResolvedValue({
+          close: vi.fn().mockResolvedValue(undefined),
+          getTile,
+          getHeader: () => ({ maxZoom: 14 }),
+        }),
+        renderTile,
+        createDatasetVersionService("./planet.pmtiles"),
+        createTemplateService(null),
+        createStorageProvider(),
+        cacheStorage
+      );
+
+      const svg = await service.renderTileSvg(3, 4, 5);
+
+      expect(svg).toBe("<svg>fresh</svg>");
+      expect(renderTile).toHaveBeenCalledTimes(1);
+      expect(cacheStorage.exists).toHaveBeenCalledWith("v1/3/4/5.svg");
+      expect(cacheStorage.mkdir).toHaveBeenCalledWith("v1/3/4", { recursive: true });
+      expect(cacheStorage.writeFile).toHaveBeenCalledWith("v1/3/4/5.svg", Buffer.from("<svg>fresh</svg>", "utf8"));
+    });
+
+    it("returns the cached tile without rendering or fetching tile data again on a hit", async () => {
+      const getTile = vi.fn();
+      const renderTile = vi.fn();
+      const cacheStorage = createStorageProvider({
+        exists: vi.fn().mockResolvedValue(true),
+        readFile: vi.fn().mockResolvedValue(Buffer.from("<svg>cached</svg>", "utf8")),
+      });
+      const service = new TestTilesService(
+        createConfigService({}),
+        vi.fn().mockResolvedValue({
+          close: vi.fn().mockResolvedValue(undefined),
+          getTile,
+          getHeader: () => ({ maxZoom: 14 }),
+        }),
+        renderTile,
+        createDatasetVersionService("./planet.pmtiles"),
+        createTemplateService(null),
+        createStorageProvider(),
+        cacheStorage
+      );
+
+      const svg = await service.renderTileSvg(3, 4, 5);
+
+      expect(svg).toBe("<svg>cached</svg>");
+      expect(getTile).not.toHaveBeenCalled();
+      expect(renderTile).not.toHaveBeenCalled();
+      expect(cacheStorage.readFile).toHaveBeenCalledWith("v1/3/4/5.svg");
+      expect(cacheStorage.writeFile).not.toHaveBeenCalled();
+    });
+
+    it("still applies the requested template on a cache hit (the cache only ever holds the un-styled render)", async () => {
+      const cacheStorage = createStorageProvider({
+        exists: vi.fn().mockResolvedValue(true),
+        readFile: vi.fn().mockResolvedValue(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>', "utf8")),
+      });
+      const service = new TestTilesService(
+        createConfigService({}),
+        vi.fn().mockResolvedValue({
+          close: vi.fn().mockResolvedValue(undefined),
+          getTile: vi.fn(),
+          getHeader: () => ({ maxZoom: 14 }),
+        }),
+        vi.fn(),
+        createDatasetVersionService(),
+        createTemplateService({ "--map-water": "#123456" }),
+        createStorageProvider(),
+        cacheStorage
+      );
+
+      const svg = await service.renderTileSvg(3, 4, 5);
+
+      expect(svg).toContain("<style>:root{--map-water:#123456;}</style>");
+    });
   });
 
   it("uses a default cache policy when none is configured", () => {

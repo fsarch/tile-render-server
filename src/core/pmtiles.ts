@@ -1,5 +1,6 @@
 import { open, type FileHandle } from "node:fs/promises";
 import { PMTiles, tileIdToZxy, type Entry, type Header, type RangeResponse, type Source } from "pmtiles";
+import type { IStorageProvider } from "../storage/storage-provider.interface.js";
 
 export interface TileCoord {
   z: number;
@@ -29,6 +30,29 @@ class NodeFileSource implements Source {
     return {
       data: output.buffer.slice(output.byteOffset, output.byteOffset + output.byteLength),
     };
+  }
+}
+
+// Backs openPMTilesArchiveFromStorage (REST API only - see TilesService) with an
+// IStorageProvider (local filesystem or S3, per storage.data in config.yaml) instead of
+// a Node file handle. Every PMTiles read is a random-access byte range - its own
+// directory/tile lookups are built entirely around that - never a whole-file read,
+// which is exactly what IStorageProvider.readRange is for.
+export class StorageSource implements Source {
+  constructor(
+    private readonly storage: IStorageProvider,
+    private readonly key: string
+  ) {}
+
+  getKey(): string {
+    return this.key;
+  }
+
+  async getBytes(offset: number, length: number): Promise<RangeResponse> {
+    const buffer = await this.storage.readRange(this.key, offset, length);
+    const data = new ArrayBuffer(buffer.byteLength);
+    new Uint8Array(data).set(buffer);
+    return { data };
   }
 }
 
@@ -64,8 +88,11 @@ async function* iterateRunEntries(
 }
 
 export class LocalPMTilesArchive {
+  // `close` abstracts over what actually needs releasing: a Node FileHandle for the
+  // batch CLI/openPMTilesArchive path, or a no-op for openPMTilesArchiveFromStorage
+  // (IStorageProvider reads are stateless per call - there's no persistent handle).
   constructor(
-    private readonly fileHandle: FileHandle,
+    private readonly close_: () => Promise<void>,
     private readonly archive: PMTiles,
     private readonly header: Header
   ) {}
@@ -118,14 +145,35 @@ export class LocalPMTilesArchive {
   }
 
   async close(): Promise<void> {
-    await this.fileHandle.close();
+    await this.close_();
   }
 }
 
+async function openPMTilesArchiveFromSource(
+  source: Source,
+  close: () => Promise<void>
+): Promise<LocalPMTilesArchive> {
+  const archive = new PMTiles(source);
+  const header = await archive.getHeader();
+  return new LocalPMTilesArchive(close, archive, header);
+}
+
+// Batch CLI only (src/cli/index.ts, src/cli/worker.ts) - always a local filesystem
+// path, independent of storage.data/config.yaml (the CLI never touches Postgres or the
+// REST API's config, see CLAUDE.md).
 export async function openPMTilesArchive(filePath: string): Promise<LocalPMTilesArchive> {
   const fileHandle = await open(filePath, "r");
   const source = new NodeFileSource(filePath, fileHandle);
-  const archive = new PMTiles(source);
-  const header = await archive.getHeader();
-  return new LocalPMTilesArchive(fileHandle, archive, header);
+  return openPMTilesArchiveFromSource(source, () => fileHandle.close());
+}
+
+// REST API only (TilesService) - `key` is resolved by `storage` (see
+// src/storage/storage-provider.interface.ts), which may be a local directory or an S3
+// bucket/prefix depending on storage.data in config.yaml.
+export async function openPMTilesArchiveFromStorage(
+  storage: IStorageProvider,
+  key: string
+): Promise<LocalPMTilesArchive> {
+  const source = new StorageSource(storage, key);
+  return openPMTilesArchiveFromSource(source, () => Promise.resolve());
 }

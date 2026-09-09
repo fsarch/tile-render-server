@@ -205,3 +205,14 @@ Implementation requirement from follow-up:
 - A tile must be requestable with an explicitly chosen template, independent of which one (if any) is currently active: `GET /v1/templates/:id/tiles/:z/:x/:y.svg` renders/responds identically to `GET /v1/tiles/:z/:x/:y.svg`, except the color theme comes from the template with that id rather than the active one.
   - `:id` must be validated as a well-formed template id (a 400 if not) and must resolve to an existing template (a 404 if not) before rendering proceeds.
   - This must not require a second render of the tile's geometry - it is the same rendering path as the active-template route, just fed a different template lookup.
+
+## 19. Storage and the Rendered-Tile Cache (REST API only)
+- Two independently configurable storage backends must exist in `config.yaml`, under `storage.data` and `storage.cache`. Each must support at least a local filesystem backend (a base directory) and an S3 backend (bucket, region, optional credentials/endpoint/prefix); mixing backends (e.g. S3 for data, filesystem for cache) must be possible.
+  - `storage.data` is where `dataset_versions.path` is resolved from - a base directory for filesystem, or a bucket/prefix for S3. `dataset_versions.path` is a key/relative path within it, not necessarily an absolute filesystem path.
+  - `storage.cache` is where rendered tiles are cached (see below).
+  - The pmtiles archive must never be read in full to serve a tile: both backends must support random-access byte-range reads (matching how the PMTiles format itself is designed to be queried), since a real archive is commonly hundreds of MB to several GB.
+- The batch CLI is unaffected by either setting - it always reads/writes plain local filesystem paths given via `--input`/`--output`, independent of `config.yaml`/`storage.*`/Postgres.
+- The REST API must cache a tile's *rendered* markup (post-rendering, pre-template - see §18's rendering/styling separation) in `storage.cache`, keyed by dataset version and coordinates, so identical requests skip re-rendering:
+  - The cache key must include the active dataset version's identity, not just `z`/`x`/`y` - otherwise, after switching `dataset_versions` (and restarting, per §18), a stale cache entry from the previous dataset could be served under coordinates that coincidentally match in the new one.
+  - A cache hit must still go through template resolution/injection (§18) - the cache holds one shared, template-agnostic render; the active/requested template is applied fresh on every request regardless of whether the render came from cache or was just computed.
+  - A cache miss must render normally, then populate the cache, then proceed with template injection as usual.

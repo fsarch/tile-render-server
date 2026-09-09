@@ -47,9 +47,38 @@ database:
   database: maps_converter
 ```
 
+## Storage
+
+Die REST-API liest/schreibt zwei unabhängig konfigurierbare Storage-Backends (`src/storage/`, angelehnt an das Storage-Modul von `image-server`) — jeweils lokales Dateisystem oder S3, frei mischbar:
+
+```yaml
+storage:
+  data: .          # Basis für dataset_versions.path (siehe unten)
+  cache: ./cache   # gerenderte (ungestylte) SVG-Kacheln
+```
+
+Beide akzeptieren wahlweise einen bloßen String (Kurzform für lokales Dateisystem) oder die explizite Form mit S3:
+
+```yaml
+storage:
+  data:
+    type: s3
+    config:
+      bucket: my-pmtiles-bucket
+      region: eu-central-1
+      accessKeyId: ...       # optional bei IAM-Rollen/Standard-AWS-Credentials
+      secretAccessKey: ...   # nur zusammen mit accessKeyId
+      endpoint: https://...  # optional, für S3-kompatible Dienste (MinIO etc.)
+      prefix: datasets/      # optional
+```
+
+`storage.cache` speichert dort die **gerenderte, noch ungestylte** Kachel (Schlüssel `{datasetVersionId}/{z}/{x}/{y}.svg`) — genau das, was die Trennung von Rendering und Styling (siehe unten) überhaupt erst ermöglicht: ein Cache-Eintrag bedient jedes Template, ein Template-Wechsel invalidiert den Cache nie. Der Ordner/Bucket muss nicht vorbefüllt werden, er füllt sich bei Bedarf.
+
+Die Batch-CLI ist von `storage.*` komplett unberührt — `--input`/`--output` bleiben immer lokale Dateisystempfade, unabhängig von `config.yaml`.
+
 ## Datasets und Themes
 
-Der Pfad zur `planet.pmtiles`-Datei kommt nicht mehr aus `config.yaml` (kein `tiles.input` mehr), sondern ausschließlich aus der `dataset_versions`-Tabelle — genau eine Zeile ist per `is_active` aktiv. Es gibt noch keine Verwaltungs-API dafür; Zeilen werden direkt per SQL angelegt/aktiviert:
+Der Pfad zur `planet.pmtiles`-Datei kommt nicht mehr aus `config.yaml` (kein `tiles.input` mehr), sondern ausschließlich aus der `dataset_versions`-Tabelle — genau eine Zeile ist per `is_active` aktiv; `path` wird relativ zu `storage.data` aufgelöst (s.o.). Es gibt noch keine Verwaltungs-API dafür; Zeilen werden direkt per SQL angelegt/aktiviert:
 
 ```sql
 INSERT INTO dataset_versions (id, path, is_active)

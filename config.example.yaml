@@ -18,6 +18,31 @@ tiles:
   # below the dataset's max zoom is a no-op - this only ever extends serving upward.
   # maxZoom: 18
 
+# Where the REST API reads/writes files, independent of local disk vs. S3 - see
+# src/storage/. Required for `npm start`; not used by `npm test` or the batch CLI
+# (`--input`/`--output` there are always plain local filesystem paths).
+storage:
+  # storage.data: where dataset_versions.path is resolved from (a local base directory,
+  # or an S3 bucket/prefix) - "." reproduces the old tiles.input behavior (paths
+  # relative to the project root).
+  data: .
+  # storage.cache: where rendered (pre-template) SVG tiles are cached, keyed by
+  # dataset_version id + z/x/y - see REQUIREMENTS.md §18. A fresh/empty directory (or
+  # bucket) is fine; it's populated on demand and never needs to be seeded.
+  cache: ./cache
+  # Both accept the same two shapes; a bare string is shorthand for
+  # `{ type: filesystem, config: { path: <string> } }`. Uncomment for S3 (works
+  # identically for storage.cache):
+  # data:
+  #   type: s3
+  #   config:
+  #     bucket: my-pmtiles-bucket
+  #     region: eu-central-1
+  #     accessKeyId: ...           # optional if using IAM roles/default AWS credentials
+  #     secretAccessKey: ...       # required together with accessKeyId
+  #     endpoint: https://...      # optional, for S3-compatible services (MinIO etc.)
+  #     prefix: datasets/          # optional, prefixes every key
+
 # Shared, persistent cache for cross-tile label anchor positions (see
 # src/core/label-anchor-cache.ts). Required for `npm start` - not used by `npm test` or the
 # batch CLI (`npm run render`).

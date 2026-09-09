@@ -18,6 +18,7 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1128.0",
     "@fsarch/server": "^0.1.0",
     "@mapbox/vector-tile": "^3.0.0",
     "@nestjs/common": "^11.1.28",
