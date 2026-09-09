@@ -1,13 +1,13 @@
 {
   "name": "maps-converter",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "On-demand SVG tile API backed by PMTiles",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "fsarch-server start",
-    "render": "node dist/index.js",
-    "example": "node dist/example-server.js --port 4173 --api-base http://127.0.0.1:3000",
+    "render": "node dist/cli/index.js",
+    "example": "node dist/example/example-server.js --port 4173 --api-base http://127.0.0.1:3000",
     "test": "npm run build && vitest run",
     "migration:create": "typeorm-ts-node-esm ./node_modules/typeorm/cli.js migration:create ./src/database/migrations/$npm_config_name",
     "migration:run": "typeorm-ts-node-esm -d src/database/data-source.ts migration:run",
@@ -15,7 +15,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "@fsarch/server": "^0.1.0",

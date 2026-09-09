@@ -1,8 +1,8 @@
 import { access, mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { parentPort, workerData } from "node:worker_threads";
-import { openPMTilesArchive } from "./pmtiles.js";
-import { renderTileToSvg } from "./renderer.js";
+import { openPMTilesArchive } from "../core/pmtiles.js";
+import { renderTileToSvg } from "../core/renderer.js";
 
 interface WorkerConfig {
   inputPath: string;

@@ -1,6 +1,58 @@
 type StyleValue = string | number;
 export type SvgStyle = Record<string, StyleValue>;
 
+// --- Themeable colors ---------------------------------------------------------------
+//
+// Rendering (this file, renderer.ts, svg.ts) and styling (colors) are deliberately
+// kept separate so a rendered tile can be cached independently of which color theme is
+// active: every color below that a Template (see src/database/entities/template.entity.ts)
+// may override is emitted as `var(--the-name, <today's-hardcoded-value>)` via
+// themedColor(), never as a bare hex value. A tile rendered with no active template
+// looks pixel-identical to before this existed - the fallback *is* the old hardcoded
+// color - and injectStyleTemplate (svg.ts) only ever adds a `<style>` block on top of
+// an otherwise-unchanged, cacheable document; it never touches rendering.
+//
+// This list is intentionally curated, not exhaustive: it covers the "headline" colors
+// (background, water, buildings, roads grouped by the same priority classes
+// REQUIREMENTS.md §8.2 already treats as significant, label text/halo colors) plus the
+// landuse ground-cover groups actually visible on most tiles, bundled by broad category
+// rather than exposed per exact OSM class (see getLanduseVariant/LANDUSE_VARIANT_STYLES
+// below):
+//   --map-landuse  - "green" nature ground cover: forest, park, meadow, grass, scrub,
+//                    heath, shrub, wetland (a dark theme wants all of these uniformly
+//                    darker, not each its own distinct light-green shade)
+//   --map-urban    - residential/commercial/industrial/railway landuse zones
+//   --map-farmland - farmland/orchards/vineyards/allotments
+// Rarer/niche variants (bare ground, sand, rock, ice/glacier) stay hardcoded, as does
+// finer-grained detail like minor road sub-variants and the nature-reserve label color
+// override in renderer.ts; add more variables here if any of that needs to become
+// themeable too.
+export const THEMEABLE_COLOR_VARIABLES = [
+  "--map-background",
+  "--map-water",
+  "--map-buildings",
+  "--map-landuse",
+  "--map-urban",
+  "--map-farmland",
+  "--road-motorway",
+  "--road-trunk",
+  "--road-primary",
+  "--road-secondary",
+  "--road-tertiary",
+  "--road-minor",
+  "--railways",
+  "--label-text",
+  "--label-halo",
+  "--water-label-text",
+  "--nature-label-text",
+] as const;
+
+export type ThemeableColorVariable = (typeof THEMEABLE_COLOR_VARIABLES)[number];
+
+function themedColor(variable: ThemeableColorVariable, fallback: string): string {
+  return `var(${variable}, ${fallback})`;
+}
+
 type LayerName =
   | "water"
   | "land"
@@ -46,24 +98,24 @@ const SOURCE_LAYER_ALIASES: Record<LayerName, string[]> = {
 
 const NATURE_LABEL_STYLES = {
   water: {
-    fill: "#2f6ea6",
+    fill: themedColor("--water-label-text", "#2f6ea6"),
     "font-size": 10,
     "font-family": "sans-serif",
     "text-anchor": "middle",
     "dominant-baseline": "central",
     "paint-order": "stroke",
-    stroke: "#ffffff",
+    stroke: themedColor("--label-halo", "#ffffff"),
     "stroke-width": 2.4,
     "stroke-linejoin": "round",
   },
   nature: {
-    fill: "#49613b",
+    fill: themedColor("--nature-label-text", "#49613b"),
     "font-size": 10,
     "font-family": "sans-serif",
     "text-anchor": "middle",
     "dominant-baseline": "central",
     "paint-order": "stroke",
-    stroke: "#ffffff",
+    stroke: themedColor("--label-halo", "#ffffff"),
     "stroke-width": 2.2,
     "stroke-linejoin": "round",
   },
@@ -71,38 +123,38 @@ const NATURE_LABEL_STYLES = {
 
 const LAYER_STYLES: Record<LayerName, LayerStyleDef> = {
   water: {
-    polygon: { fill: "#9ecfff", stroke: "none" },
-    line: { stroke: "#7bb7ef", "stroke-width": 1, fill: "none" },
-    point: { fill: "#7bb7ef", stroke: "none", r: 1.5 },
+    polygon: { fill: themedColor("--map-water", "#9ecfff"), stroke: "none" },
+    line: { stroke: themedColor("--map-water", "#7bb7ef"), "stroke-width": 1, fill: "none" },
+    point: { fill: themedColor("--map-water", "#7bb7ef"), stroke: "none", r: 1.5 },
   },
   land: {
-    polygon: { fill: "#f5f3e7", stroke: "none" },
-    line: { stroke: "#e8e0cb", "stroke-width": 1, fill: "none" },
-    point: { fill: "#e8e0cb", stroke: "none", r: 1.5 },
+    polygon: { fill: themedColor("--map-background", "#f5f3e7"), stroke: "none" },
+    line: { stroke: themedColor("--map-background", "#e8e0cb"), "stroke-width": 1, fill: "none" },
+    point: { fill: themedColor("--map-background", "#e8e0cb"), stroke: "none", r: 1.5 },
   },
   roads: {
     line: {
-      stroke: "#ffffff",
+      stroke: themedColor("--road-minor", "#ffffff"),
       "stroke-width": 1.5,
       "stroke-linecap": "round",
       "stroke-linejoin": "round",
       fill: "none",
     },
     text: {
-      fill: "#5d5241",
+      fill: themedColor("--label-text", "#5d5241"),
       "font-size": 9,
       "font-family": "sans-serif",
       "text-anchor": "middle",
       "dominant-baseline": "central",
       "paint-order": "stroke",
-      stroke: "#ffffff",
+      stroke: themedColor("--label-halo", "#ffffff"),
       "stroke-width": 2.5,
       "stroke-linejoin": "round",
     },
   },
   railways: {
     line: {
-      stroke: "#bdbdbd",
+      stroke: themedColor("--railways", "#bdbdbd"),
       "stroke-width": 0.9,
       "stroke-linecap": "round",
       "stroke-linejoin": "round",
@@ -110,7 +162,11 @@ const LAYER_STYLES: Record<LayerName, LayerStyleDef> = {
     },
   },
   buildings: {
-    polygon: { fill: "#e5ddd0", stroke: "#cdbfaa", "stroke-width": 0.5 },
+    polygon: {
+      fill: themedColor("--map-buildings", "#e5ddd0"),
+      stroke: themedColor("--map-buildings", "#cdbfaa"),
+      "stroke-width": 0.5,
+    },
   },
   boundaries: {
     line: {
@@ -123,26 +179,26 @@ const LAYER_STYLES: Record<LayerName, LayerStyleDef> = {
   places: {
     point: { fill: "#666666", stroke: "none", r: 1.8 },
     text: {
-      fill: "#444444",
+      fill: themedColor("--label-text", "#444444"),
       "font-size": 10,
       "font-family": "sans-serif",
       "text-anchor": "middle",
       "dominant-baseline": "central",
       "paint-order": "stroke",
-      stroke: "#ffffff",
+      stroke: themedColor("--label-halo", "#ffffff"),
       "stroke-width": 2,
     },
   },
   landuse: {
-    polygon: { fill: "#cfe7b9", stroke: "none" },
-    line: { stroke: "#aacd95", "stroke-width": 1, fill: "none" },
-    point: { fill: "#aacd95", stroke: "none", r: 1.4 },
+    polygon: { fill: themedColor("--map-landuse", "#cfe7b9"), stroke: "none" },
+    line: { stroke: themedColor("--map-landuse", "#aacd95"), "stroke-width": 1, fill: "none" },
+    point: { fill: themedColor("--map-landuse", "#aacd95"), stroke: "none", r: 1.4 },
   },
 };
 
 const RAIL_SLEEPER_STYLE: SvgStyle = {
-  fill: "#bdbdbd",
-  stroke: "#bdbdbd",
+  fill: themedColor("--railways", "#bdbdbd"),
+  stroke: themedColor("--railways", "#bdbdbd"),
   "stroke-width": 0.35,
   "stroke-linecap": "round",
 };
@@ -215,23 +271,28 @@ function roadWidthZoomScale(zoom?: number): number {
   return 1;
 }
 
+// Themed by the same high-priority classes REQUIREMENTS.md §8.2 already singles out
+// for label priority (motorway/trunk/primary/secondary/tertiary get their own
+// variable); every other class shares one catch-all "--road-minor" variable - these
+// are all, in one way or another, local/minor roads or niche overlays, not a map's
+// headline color decisions.
 const ROAD_VARIANT_STYLES: Record<string, SvgStyle> = {
-  motorway: { stroke: "#f4a23c" },
-  trunk: { stroke: "#f4a23c" },
-  primary: { stroke: "#f7c948" },
-  secondary: { stroke: "#f8dea1" },
-  tertiary: { stroke: "#f5dcaa" },
-  minor: { stroke: "#f2ecdd" },
-  residential: { stroke: "#ffffff" },
-  unclassified: { stroke: "#ffffff" },
-  service: { stroke: "#c7b8a0" },
-  track: { stroke: "#8fb784", "stroke-dasharray": "1.5 1.3" },
-  path: { stroke: "#c8beaf", "stroke-dasharray": "1.5 1.3" },
-  ferry: { stroke: "#3f8fd6", "stroke-dasharray": "3 2" },
-  pier: { stroke: "#c2b394" },
-  bridge: { stroke: "#c9bdad" },
-  raceway: { stroke: "#d9a8a0" },
-  transit: { stroke: "#bfb9ab" },
+  motorway: { stroke: themedColor("--road-motorway", "#f4a23c") },
+  trunk: { stroke: themedColor("--road-trunk", "#f4a23c") },
+  primary: { stroke: themedColor("--road-primary", "#f7c948") },
+  secondary: { stroke: themedColor("--road-secondary", "#f8dea1") },
+  tertiary: { stroke: themedColor("--road-tertiary", "#f5dcaa") },
+  minor: { stroke: themedColor("--road-minor", "#f2ecdd") },
+  residential: { stroke: themedColor("--road-minor", "#ffffff") },
+  unclassified: { stroke: themedColor("--road-minor", "#ffffff") },
+  service: { stroke: themedColor("--road-minor", "#c7b8a0") },
+  track: { stroke: themedColor("--road-minor", "#8fb784"), "stroke-dasharray": "1.5 1.3" },
+  path: { stroke: themedColor("--road-minor", "#c8beaf"), "stroke-dasharray": "1.5 1.3" },
+  ferry: { stroke: themedColor("--road-minor", "#3f8fd6"), "stroke-dasharray": "3 2" },
+  pier: { stroke: themedColor("--road-minor", "#c2b394") },
+  bridge: { stroke: themedColor("--road-minor", "#c9bdad") },
+  raceway: { stroke: themedColor("--road-minor", "#d9a8a0") },
+  transit: { stroke: themedColor("--road-minor", "#bfb9ab") },
 };
 
 function getRoadVariantStyle(roadClass: string): SvgStyle | undefined {
@@ -250,36 +311,40 @@ export function normalizeRoadClass(properties: Record<string, unknown> = {}): st
   return token;
 }
 
+// "Green" nature ground cover (park/meadow/grass/forest/scrub/heath/shrub/wetland)
+// shares --map-landuse; residential/commercial/industrial/railway zones use
+// --map-urban; farmland gets its own --map-farmland. bare/sand/ice/rock are rare/niche
+// enough to stay hardcoded (see THEMEABLE_COLOR_VARIABLES above).
 const LANDUSE_VARIANT_STYLES: Record<string, LayerStyleDef> = {
   urban: {
-    polygon: { fill: "#ece6db", stroke: "none" },
-    line: { stroke: "#d6cebf", "stroke-width": 1, fill: "none" },
-    point: { fill: "#d6cebf", stroke: "none", r: 1.4 },
+    polygon: { fill: themedColor("--map-urban", "#ece6db"), stroke: "none" },
+    line: { stroke: themedColor("--map-urban", "#d6cebf"), "stroke-width": 1, fill: "none" },
+    point: { fill: themedColor("--map-urban", "#d6cebf"), stroke: "none", r: 1.4 },
   },
   park: {
-    polygon: { fill: "#cdebb0", stroke: "none" },
-    line: { stroke: "#9fcf86", "stroke-width": 1, fill: "none" },
-    point: { fill: "#9fcf86", stroke: "none", r: 1.4 },
+    polygon: { fill: themedColor("--map-landuse", "#cdebb0"), stroke: "none" },
+    line: { stroke: themedColor("--map-landuse", "#9fcf86"), "stroke-width": 1, fill: "none" },
+    point: { fill: themedColor("--map-landuse", "#9fcf86"), stroke: "none", r: 1.4 },
   },
   meadow: {
-    polygon: { fill: "#d7efbb", stroke: "none" },
-    line: { stroke: "#a9d38f", "stroke-width": 1, fill: "none" },
-    point: { fill: "#a9d38f", stroke: "none", r: 1.4 },
+    polygon: { fill: themedColor("--map-landuse", "#d7efbb"), stroke: "none" },
+    line: { stroke: themedColor("--map-landuse", "#a9d38f"), "stroke-width": 1, fill: "none" },
+    point: { fill: themedColor("--map-landuse", "#a9d38f"), stroke: "none", r: 1.4 },
   },
   grass: {
-    polygon: { fill: "#d4ebb7", stroke: "none" },
-    line: { stroke: "#a7cf8d", "stroke-width": 1, fill: "none" },
-    point: { fill: "#a7cf8d", stroke: "none", r: 1.4 },
+    polygon: { fill: themedColor("--map-landuse", "#d4ebb7"), stroke: "none" },
+    line: { stroke: themedColor("--map-landuse", "#a7cf8d"), "stroke-width": 1, fill: "none" },
+    point: { fill: themedColor("--map-landuse", "#a7cf8d"), stroke: "none", r: 1.4 },
   },
   farmland: {
-    polygon: { fill: "#e6e2b8", stroke: "none" },
-    line: { stroke: "#d1c98f", "stroke-width": 1, fill: "none" },
-    point: { fill: "#d1c98f", stroke: "none", r: 1.4 },
+    polygon: { fill: themedColor("--map-farmland", "#e6e2b8"), stroke: "none" },
+    line: { stroke: themedColor("--map-farmland", "#d1c98f"), "stroke-width": 1, fill: "none" },
+    point: { fill: themedColor("--map-farmland", "#d1c98f"), stroke: "none", r: 1.4 },
   },
   forest: {
-    polygon: { fill: "#b7d3a8", stroke: "none" },
-    line: { stroke: "#8fb784", "stroke-width": 1, fill: "none" },
-    point: { fill: "#8fb784", stroke: "none", r: 1.4 },
+    polygon: { fill: themedColor("--map-landuse", "#b7d3a8"), stroke: "none" },
+    line: { stroke: themedColor("--map-landuse", "#8fb784"), "stroke-width": 1, fill: "none" },
+    point: { fill: themedColor("--map-landuse", "#8fb784"), stroke: "none", r: 1.4 },
   },
   bare: {
     polygon: { fill: "#ddd7cb", stroke: "none" },
@@ -292,14 +357,14 @@ const LANDUSE_VARIANT_STYLES: Record<string, LayerStyleDef> = {
     point: { fill: "#d9c999", stroke: "none", r: 1.4 },
   },
   scrub: {
-    polygon: { fill: "#c8d7b5", stroke: "none" },
-    line: { stroke: "#a8bc93", "stroke-width": 1, fill: "none" },
-    point: { fill: "#a8bc93", stroke: "none", r: 1.4 },
+    polygon: { fill: themedColor("--map-landuse", "#c8d7b5"), stroke: "none" },
+    line: { stroke: themedColor("--map-landuse", "#a8bc93"), "stroke-width": 1, fill: "none" },
+    point: { fill: themedColor("--map-landuse", "#a8bc93"), stroke: "none", r: 1.4 },
   },
   wetland: {
-    polygon: { fill: "#bfdcc8", stroke: "none" },
-    line: { stroke: "#98bfa7", "stroke-width": 1, fill: "none" },
-    point: { fill: "#98bfa7", stroke: "none", r: 1.4 },
+    polygon: { fill: themedColor("--map-landuse", "#bfdcc8"), stroke: "none" },
+    line: { stroke: themedColor("--map-landuse", "#98bfa7"), "stroke-width": 1, fill: "none" },
+    point: { fill: themedColor("--map-landuse", "#98bfa7"), stroke: "none", r: 1.4 },
   },
   ice: {
     polygon: { fill: "#e8f2f8", stroke: "none" },
@@ -312,14 +377,14 @@ const LANDUSE_VARIANT_STYLES: Record<string, LayerStyleDef> = {
     point: { fill: "#b5aea4", stroke: "none", r: 1.4 },
   },
   heath: {
-    polygon: { fill: "#d8ccba", stroke: "none" },
-    line: { stroke: "#bfae99", "stroke-width": 1, fill: "none" },
-    point: { fill: "#bfae99", stroke: "none", r: 1.4 },
+    polygon: { fill: themedColor("--map-landuse", "#d8ccba"), stroke: "none" },
+    line: { stroke: themedColor("--map-landuse", "#bfae99"), "stroke-width": 1, fill: "none" },
+    point: { fill: themedColor("--map-landuse", "#bfae99"), stroke: "none", r: 1.4 },
   },
   shrub: {
-    polygon: { fill: "#cadab8", stroke: "none" },
-    line: { stroke: "#a9be95", "stroke-width": 1, fill: "none" },
-    point: { fill: "#a9be95", stroke: "none", r: 1.4 },
+    polygon: { fill: themedColor("--map-landuse", "#cadab8"), stroke: "none" },
+    line: { stroke: themedColor("--map-landuse", "#a9be95"), "stroke-width": 1, fill: "none" },
+    point: { fill: themedColor("--map-landuse", "#a9be95"), stroke: "none", r: 1.4 },
   },
 };
 

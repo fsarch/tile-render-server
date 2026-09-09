@@ -1,9 +1,8 @@
-app:
-  host: 0.0.0.0
-  port: 3000
-
 tiles:
-  input: ./planet.pmtiles
+  # No "input" setting here anymore - the pmtiles path comes exclusively from the
+  # active row of the dataset_versions table (see the "Datasets and themes" section of
+  # README.md for how to insert/activate one). Required for `npm start`; not used by
+  # `npm test` or the batch CLI (`npm run render`), which still takes --input directly.
   cacheControl: public, max-age=3600
   labels: true
   roadLabels: true
@@ -12,9 +11,15 @@ tiles:
   # cached in Postgres against a prior build's feature ids can't silently leak into a
   # new one (old rows for a previous version just become unreferenced).
   datasetVersion: ""
+  # Optional: serve zoom levels beyond what planet.pmtiles actually contains by
+  # "overzooming" - cropping and scaling the deepest real tile's geometry to stand in
+  # for the requested one (API only, not the batch CLI). Omit to disable (requests
+  # above the dataset's own max zoom get a 404, as without this setting). A value at or
+  # below the dataset's max zoom is a no-op - this only ever extends serving upward.
+  # maxZoom: 18
 
 # Shared, persistent cache for cross-tile label anchor positions (see
-# src/label-anchor-cache.ts). Required for `npm start` - not used by `npm test` or the
+# src/core/label-anchor-cache.ts). Required for `npm start` - not used by `npm test` or the
 # batch CLI (`npm run render`).
 database:
   type: postgres

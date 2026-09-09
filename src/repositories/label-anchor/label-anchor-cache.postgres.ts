@@ -3,7 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { LabelAnchor } from "../../database/entities/label-anchor.entity.js";
-import type { GlobalAreaAnchor, LabelAnchorCache, LabelAnchorKey } from "../../label-anchor-cache.js";
+import type { GlobalAreaAnchor, LabelAnchorCache, LabelAnchorKey } from "../../core/label-anchor-cache.js";
 
 @Injectable()
 export class PostgresLabelAnchorCache implements LabelAnchorCache {

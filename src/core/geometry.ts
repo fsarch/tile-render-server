@@ -29,6 +29,43 @@ function toTileCoord(value: number, extent: number): number {
   return (value / extent) * TILE_SIZE;
 }
 
+// Describes how to crop+scale an already-normalized (0..256) tile's geometry so it
+// stands in for a deeper zoom level the dataset doesn't actually contain ("overzoom").
+// `sourceZoom/sourceX/sourceY` is the real tile whose bytes were fetched; `scale` is
+// how much bigger the requested tile is (2^(requestedZoom - sourceZoom)); `offsetX`/
+// `offsetY` (in the source tile's own 0..256 units) is the top-left corner of the
+// sub-square that the requested tile occupies within it. A `scale` of 1 is the
+// identity transform - the normal, non-overzoomed case.
+export interface OverzoomTransform {
+  sourceZoom: number;
+  sourceX: number;
+  sourceY: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+// For a requested tile (z, x, y) beyond `maxZoom`, finds the real ancestor tile to
+// render instead and the crop+scale needed to make its geometry stand in for the
+// requested tile. Returns the identity transform when z is already within range.
+export function computeOverzoomTransform(
+  z: number,
+  x: number,
+  y: number,
+  maxZoom: number
+): OverzoomTransform {
+  if (!Number.isFinite(maxZoom) || z <= maxZoom) {
+    return { sourceZoom: z, sourceX: x, sourceY: y, scale: 1, offsetX: 0, offsetY: 0 };
+  }
+  const shift = z - maxZoom;
+  const scale = 2 ** shift;
+  const sourceX = Math.floor(x / scale);
+  const sourceY = Math.floor(y / scale);
+  const offsetX = ((x - sourceX * scale) * TILE_SIZE) / scale;
+  const offsetY = ((y - sourceY * scale) * TILE_SIZE) / scale;
+  return { sourceZoom: maxZoom, sourceX, sourceY, scale, offsetX, offsetY };
+}
+
 function ringArea(points: Point2D[]): number {
   let area = 0;
   for (let i = 0; i < points.length; i += 1) {
@@ -61,18 +98,25 @@ export function getPolygonArea(rings: Point2D[][]): number {
 
 export function decodeFeatureGeometry(
   feature: VectorTileFeature,
-  extent = DEFAULT_EXTENT
+  extent = DEFAULT_EXTENT,
+  overzoom?: OverzoomTransform
 ): NormalizedGeometry | null {
   if (!feature || typeof feature.loadGeometry !== "function") return null;
   const geometry = feature.loadGeometry();
   if (!Array.isArray(geometry) || geometry.length === 0) return null;
 
+  const crop = overzoom && overzoom.scale !== 1 ? overzoom : undefined;
   const normalized = geometry
     .map((line) =>
-      line.map((point) => ({
-        x: toTileCoord(point.x, extent),
-        y: toTileCoord(point.y, extent),
-      }))
+      line.map((point) => {
+        let x = toTileCoord(point.x, extent);
+        let y = toTileCoord(point.y, extent);
+        if (crop) {
+          x = (x - crop.offsetX) * crop.scale;
+          y = (y - crop.offsetY) * crop.scale;
+        }
+        return { x, y };
+      })
     )
     .filter((line) => line.length > 0);
 

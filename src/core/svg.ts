@@ -1,5 +1,5 @@
 import type { NormalizedGeometry, Point2D } from "./geometry.js";
-import { getBackgroundFill, getLayerOrder, type SvgStyle } from "./styles.js";
+import { getBackgroundFill, getLayerOrder, THEMEABLE_COLOR_VARIABLES, type SvgStyle } from "./styles.js";
 
 function escapeXml(value: unknown): string {
   return String(value)
@@ -208,4 +208,48 @@ export function buildSvgDocument(groups: Map<string, string>, overlayContent = "
   const background = `<rect x="0" y="0" width="256" height="256" fill="${getBackgroundFill()}" class="background" />`;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">${background}${layerContent}${overlay}</svg>\n`;
+}
+
+// A CSS color value safe enough to interpolate into a <style> block as-is: hex codes,
+// rgb()/rgba()/hsl()/hsla() function notation, and plain keyword colors (e.g.
+// "steelblue"). Rejects anything containing characters that could break out of the
+// block (quotes, angle brackets, semicolons, etc.) - colors ultimately come from a
+// database column (Template.colors), so this is a defense-in-depth check, not just a
+// format nicety.
+const SAFE_CSS_COLOR_VALUE = /^[a-zA-Z0-9#(),.\s%-]{1,64}$/;
+
+// Injects a color theme into an already fully-rendered tile, as the very last step
+// before serving it (see TilesService.renderTileSvg) - this is the only place a
+// template's colors ever touch the document. renderTileToSvg itself has no notion of
+// templates at all (every themeable color it emits is a `var(--x, <default>)`
+// reference, see THEMEABLE_COLOR_VARIABLES in styles.ts), which is what lets one
+// rendered tile be reused unchanged across any number of templates - rendering and
+// styling stay fully separate, so only *this* step needs re-running when the active
+// template changes, not a re-render.
+//
+// `colors` is filtered down to known variable names (unknown keys are ignored) and to
+// values that look like a plausible CSS color (anything else is ignored too) - a
+// partial or even malformed template degrades to "that one color keeps its default"
+// rather than producing broken markup or failing the request.
+export function injectStyleTemplate(
+  svgDocument: string,
+  colors: Record<string, string> | null | undefined
+): string {
+  if (!colors) return svgDocument;
+
+  const declarations = THEMEABLE_COLOR_VARIABLES.filter((name) => Object.hasOwn(colors, name))
+    .map((name): [string, string] => [name, colors[name]])
+    .filter(([, value]) => typeof value === "string" && SAFE_CSS_COLOR_VALUE.test(value))
+    .map(([name, value]) => `${name}:${value};`)
+    .join("");
+
+  if (!declarations) return svgDocument;
+
+  const styleTag = `<style>:root{${declarations}}</style>`;
+  // Insert right after the opening <svg ...> tag, before the background rect and
+  // everything else - buildSvgDocument never puts a ">" inside an attribute value, so
+  // the first one found is reliably the opening tag's closing bracket.
+  const insertAt = svgDocument.indexOf(">") + 1;
+  if (insertAt <= 0) return svgDocument;
+  return svgDocument.slice(0, insertAt) + styleTag + svgDocument.slice(insertAt);
 }

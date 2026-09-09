@@ -87,7 +87,7 @@ async function sendFile(res: ServerResponse, path: string): Promise<void> {
   res.end(body);
 }
 
-async function proxyTile(res: ServerResponse, apiBaseUrl: string, path: string): Promise<void> {
+async function proxyApi(res: ServerResponse, apiBaseUrl: string, path: string): Promise<void> {
   const upstream = await fetch(`${apiBaseUrl}${path}`);
   const body = Buffer.from(await upstream.arrayBuffer());
   res.statusCode = upstream.status;
@@ -110,8 +110,10 @@ function notFound(res: ServerResponse): void {
 
 const options = parseArgs();
 const srcDir = resolve(fileURLToPath(new URL(".", import.meta.url)));
-const projectRoot = resolve(srcDir, "..");
-const exampleDir = resolve(projectRoot, "example");
+const projectRoot = resolve(srcDir, "..", "..");
+// Static assets aren't compiled by tsc, so they stay put in src/ and are served
+// straight from there - even when this file itself is running as compiled dist/ JS.
+const exampleDir = resolve(projectRoot, "src", "example", "public");
 
 const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
   try {
@@ -145,8 +147,10 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
       return;
     }
 
-    if (decodedPath.startsWith("/v1/tiles/")) {
-      await proxyTile(res, options.apiBaseUrl, decodedPath);
+    if (decodedPath.startsWith("/v1/")) {
+      // Proxies any v1 API route, not just tile rendering - the light/dark toggle also
+      // needs GET /v1/templates (see app.js) to look up template ids by name.
+      await proxyApi(res, options.apiBaseUrl, decodedPath);
       return;
     }
 

@@ -2,7 +2,7 @@ import { cpus } from "node:os";
 import { resolve } from "node:path";
 import { Worker } from "node:worker_threads";
 import minimist from "minimist";
-import { openPMTilesArchive, type TileCoord } from "./pmtiles.js";
+import { openPMTilesArchive, type TileCoord } from "../core/pmtiles.js";
 
 interface CliOptions {
   input: string;

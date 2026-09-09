@@ -1,14 +1,14 @@
 import { Module } from "@nestjs/common";
-import { TypeOrmModule } from "@nestjs/typeorm";
-import { LabelAnchor } from "../../database/entities/label-anchor.entity.js";
-import { PostgresLabelAnchorCache } from "./label-anchor-cache.postgres.js";
+import { DatasetVersionModule } from "../../repositories/dataset-version/dataset-version.module.js";
+import { LabelAnchorModule } from "../../repositories/label-anchor/label-anchor.module.js";
+import { TemplateModule } from "../../repositories/template/template.module.js";
 import { TilesController } from "./tiles.controller.js";
 import { TilesService } from "./tiles.service.js";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([LabelAnchor])],
+  imports: [LabelAnchorModule, DatasetVersionModule, TemplateModule],
   controllers: [TilesController],
-  providers: [TilesService, PostgresLabelAnchorCache],
+  providers: [TilesService],
   exports: [TilesService],
 })
 export class TilesModule {}

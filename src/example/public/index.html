@@ -15,10 +15,15 @@
   <body>
     <div id="app">
       <header class="panel">
-        <h1>SVG Tile Example</h1>
-        <p>Quelle: <code>/v1/tiles/{z}/{x}/{y}.svg</code></p>
-        <p>Optional: <code>?apiBase=http://127.0.0.1:3000</code></p>
-        <p>Zoom und Position bleiben im URL-Hash erhalten.</p>
+        <div class="panel-text">
+          <h1>SVG Tile Example</h1>
+          <p>Quelle: <code>/v1/tiles/{z}/{x}/{y}.svg</code></p>
+          <p>Optional: <code>?apiBase=http://127.0.0.1:3000</code></p>
+          <p>Zoom und Position bleiben im URL-Hash erhalten.</p>
+        </div>
+        <div id="theme-toggle" class="theme-toggle" hidden>
+          <button id="theme-toggle-button" type="button" aria-pressed="false">🌙 Dark Mode</button>
+        </div>
       </header>
       <div id="map"></div>
     </div>

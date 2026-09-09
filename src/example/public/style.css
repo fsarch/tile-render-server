@@ -14,10 +14,15 @@ body,
 
 .panel {
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   height: 84px;
   padding: 12px 16px;
   border-bottom: 1px solid #ddd;
   background: #fff;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .panel h1 {
@@ -30,3 +35,49 @@ body,
   color: #666;
 }
 
+.theme-toggle button {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border: 1px solid #ccc;
+  border-radius: 999px;
+  background: #f7f7f7;
+  color: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.theme-toggle button:hover {
+  background: #ececec;
+}
+
+/* Applied to <body> once "dark" is selected (see app.js) - restyles the surrounding
+   chrome (header, map background) to match the dark map tiles; the tiles themselves
+   are already dark via the "dark" Template's colors, independent of this class. */
+body.dark-mode {
+  background: #14171a;
+  color: #e8e6df;
+}
+
+body.dark-mode .panel {
+  background: #1b1f24;
+  border-bottom-color: #2a2f36;
+}
+
+body.dark-mode .panel p {
+  color: #9aa0a8;
+}
+
+body.dark-mode #map {
+  background: #14171a;
+}
+
+body.dark-mode .theme-toggle button {
+  background: #262b31;
+  border-color: #3a3f47;
+  color: #e8e6df;
+}
+
+body.dark-mode .theme-toggle button:hover {
+  background: #2f353c;
+}
