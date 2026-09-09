@@ -1,10 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { extractZoomFromCacheKey, ZoomRestrictedStorageProvider } from "./zoom-restricted-storage.provider.js";
 import { MemoryStorageProvider } from "./memory-storage.provider.js";
 
 describe("extractZoomFromCacheKey", () => {
   it("extracts the zoom from a {datasetVersionId}/{z}/{x}/{y}.svg key", () => {
     expect(extractZoomFromCacheKey("v1/14/8495/5473.svg")).toBe(14);
+  });
+
+  it("extracts the zoom from a directory-only {datasetVersionId}/{z}/{x} key (the shape TilesService passes to mkdir())", () => {
+    expect(extractZoomFromCacheKey("v1/14/8495")).toBe(14);
   });
 
   it("returns null for a key that doesn't match the expected shape", () => {
@@ -54,11 +58,23 @@ describe("ZoomRestrictedStorageProvider", () => {
     const inner = new MemoryStorageProvider();
     await inner.writeFile("v1/18/1/1.svg", Buffer.from("hi"));
     const provider = new ZoomRestrictedStorageProvider(inner, undefined, 14);
+    const mkdirSpy = vi.spyOn(inner, "mkdir");
 
     await provider.deleteFile("v1/18/1/1.svg");
-    await provider.mkdir("v1/18/1");
+    await provider.mkdir("v1/18/1"); // the directory-only shape mkdir() is actually called with
 
     expect(await inner.exists("v1/18/1/1.svg")).toBe(true); // untouched by deleteFile above
+    expect(mkdirSpy).not.toHaveBeenCalled();
+  });
+
+  it("mkdir passes through for a directory-only path within range", async () => {
+    const inner = new MemoryStorageProvider();
+    const provider = new ZoomRestrictedStorageProvider(inner, undefined, 14);
+    const mkdirSpy = vi.spyOn(inner, "mkdir");
+
+    await provider.mkdir("v1/12/1");
+
+    expect(mkdirSpy).toHaveBeenCalledWith("v1/12/1", undefined);
   });
 
   it("readFile/readRange throw for an out-of-range path", async () => {

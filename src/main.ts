@@ -21,7 +21,7 @@ async function bootstrap(): Promise<void> {
     .setDatabase(DATABASE_OPTIONS)
     .build();
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 8080);
 }
 
 bootstrap().catch((error: unknown) => {

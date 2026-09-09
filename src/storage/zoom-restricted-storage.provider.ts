@@ -5,7 +5,14 @@ import type { IStorageProvider } from "./storage-provider.interface.js";
 // TilesService.renderOrGetCached) - the only thing storage.cache is ever used for.
 // This wrapper's whole purpose is scoping a cache layer to a zoom range, so it's
 // necessarily coupled to that key format; if it ever changes, update this too.
-const ZOOM_FROM_CACHE_KEY = /\/(\d+)\/\d+\/\d+\.svg$/;
+//
+// The trailing `/{y}.svg` is optional here because TilesService also calls mkdir()
+// with just `dirname(cacheKey)` (`${datasetVersionId}/{z}/{x}`, no filename) before
+// writing - that directory-only shape must resolve to the same zoom as the full file
+// path, or mkdir would fail open (run unconditionally, since its zoom couldn't be
+// determined) for a path writeFile() then correctly restricts, leaving an empty
+// directory behind for no reason.
+const ZOOM_FROM_CACHE_KEY = /\/(\d+)\/\d+(?:\/\d+\.svg)?$/;
 
 export function extractZoomFromCacheKey(path: string): number | null {
   const match = ZOOM_FROM_CACHE_KEY.exec(path);
