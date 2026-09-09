@@ -182,6 +182,7 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
       );
     }
     this.datasetVersionId = activeVersion.id;
+    this.labelAnchorCache.setDatasetVersionId(activeVersion.id);
     return activeVersion.path.trim();
   }
 

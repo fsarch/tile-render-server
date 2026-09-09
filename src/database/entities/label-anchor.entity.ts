@@ -12,11 +12,11 @@ import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } fro
 // - featureId: the feature's real MVT/OSM id, or (when a feature has no id at all) a
 //   synthetic "name:<normalized>" fallback - see getFeatureDataId/
 //   SYNTHETIC_FEATURE_ID_PREFIX in src/renderer.ts.
-// - datasetVersion: manual invalidation lever (tiles.datasetVersion in config.yaml) -
-//   bump it when planet.pmtiles is regenerated so stale anchors computed against a
-//   prior build's ids/geometry can't silently leak into a new one. Old rows simply
-//   become unreferenced once the version is bumped; no cleanup is required for
-//   correctness.
+// - datasetVersion: a real foreign key onto dataset_versions.id (which registered
+//   pmtiles build the anchor was resolved against), enforced at the DB level (see the
+//   create-schema migration, ON DELETE CASCADE). A newly-activated dataset_versions
+//   row always gets a fresh id, so anchors resolved against a prior build are never
+//   matched against it - no separate manual invalidation lever to remember to bump.
 @Entity({ name: "label_anchors" })
 export class LabelAnchor {
   @PrimaryColumn({ name: "source_layer", type: "varchar", length: 64 })
@@ -25,7 +25,7 @@ export class LabelAnchor {
   @PrimaryColumn({ name: "feature_id", type: "varchar", length: 128 })
   featureId!: string;
 
-  @PrimaryColumn({ name: "dataset_version", type: "varchar", length: 64, default: "" })
+  @PrimaryColumn({ name: "dataset_version", type: "uuid" })
   datasetVersion!: string;
 
   // World-normalized fraction [0,1), matching GlobalAreaAnchor exactly - reprojected

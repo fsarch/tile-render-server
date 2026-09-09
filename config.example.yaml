@@ -20,10 +20,10 @@ tiles:
   labels: true
   roadLabels: true
   natureLabels: true
-  # Bump whenever planet.pmtiles is regenerated/replaced, so cross-tile label anchors
-  # cached in Postgres against a prior build's feature ids can't silently leak into a
-  # new one (old rows for a previous version just become unreferenced).
-  datasetVersion: ""
+  # No "datasetVersion" setting either - the cross-tile label anchor cache in Postgres
+  # is scoped by a real foreign key onto the active dataset_versions row's id, so a
+  # newly-activated dataset_versions row (a fresh id) never matches anchors resolved
+  # against a prior build; there's nothing to manually bump.
   # Optional: serve zoom levels beyond what planet.pmtiles actually contains by
   # "overzooming" - cropping and scaling the deepest real tile's geometry to stand in
   # for the requested one (API only, not the batch CLI). Omit to disable (requests

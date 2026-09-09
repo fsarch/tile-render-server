@@ -7,12 +7,14 @@ import type { DatasetVersionService } from "../../repositories/dataset-version/d
 import type { TemplateService } from "../../repositories/template/template.service.js";
 import type { IStorageProvider } from "../../storage/storage-provider.interface.js";
 
-// Fake stub: TilesService only threads this through to renderSvg, never calls its
-// methods directly - none of these tests exercise the label-anchor-cache mechanism
-// itself (see renderer.spec.ts and label-anchor-cache.postgres.spec.ts for that).
+// Fake stub: TilesService only calls setDatasetVersionId (to scope the cache to the
+// active dataset_versions row) and threads the rest through to renderSvg - none of
+// these tests exercise the label-anchor-cache mechanism itself (see renderer.spec.ts
+// and label-anchor-cache.postgres.spec.ts for that).
 const fakeLabelAnchorCache = {
   get: vi.fn(),
   set: vi.fn(),
+  setDatasetVersionId: vi.fn(),
 } as unknown as PostgresLabelAnchorCache;
 
 function createDatasetVersionService(path: string | null = "./planet.pmtiles"): DatasetVersionService {

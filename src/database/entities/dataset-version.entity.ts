@@ -22,7 +22,7 @@ export class DatasetVersion {
 
   // Path to a planet.pmtiles file, resolved the same way tiles.input used to be
   // (relative to the process's cwd).
-  @Column({ type: "varchar", length: 1024 })
+  @Column({ type: "varchar", length: 2048 })
   path!: string;
 
   // Exactly one row may have isActive: true - enforced by a partial unique index (see

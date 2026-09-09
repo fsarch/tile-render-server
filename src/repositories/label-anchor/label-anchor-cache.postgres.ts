@@ -1,5 +1,4 @@
 import { Injectable } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { LabelAnchor } from "../../database/entities/label-anchor.entity.js";
@@ -7,16 +6,22 @@ import type { GlobalAreaAnchor, LabelAnchorCache, LabelAnchorKey } from "../../c
 
 @Injectable()
 export class PostgresLabelAnchorCache implements LabelAnchorCache {
-  constructor(
-    @InjectRepository(LabelAnchor) private readonly repository: Repository<LabelAnchor>,
-    private readonly configService: ConfigService
-  ) {}
+  // The active dataset_versions.id, scoping every cache row via a real foreign key
+  // (see the label_anchors entity/migration) - set once by TilesService as soon as it
+  // resolves the active DatasetVersion, before any tile is rendered.
+  private datasetVersionId?: string;
+
+  constructor(@InjectRepository(LabelAnchor) private readonly repository: Repository<LabelAnchor>) {}
+
+  setDatasetVersionId(id: string): void {
+    this.datasetVersionId = id;
+  }
 
   async get(key: LabelAnchorKey): Promise<GlobalAreaAnchor | null | undefined> {
     const row = await this.repository.findOneBy({
       sourceLayer: key.sourceLayer,
       featureId: key.featureId,
-      datasetVersion: this.getDatasetVersion(),
+      datasetVersion: this.getDatasetVersionId(),
     });
     if (!row) return undefined; // cache miss - go compute it
     return { fx: row.fx, fy: row.fy };
@@ -32,7 +37,7 @@ export class PostgresLabelAnchorCache implements LabelAnchorCache {
       {
         sourceLayer: key.sourceLayer,
         featureId: key.featureId,
-        datasetVersion: this.getDatasetVersion(),
+        datasetVersion: this.getDatasetVersionId(),
         fx: value.fx,
         fy: value.fy,
       },
@@ -40,8 +45,10 @@ export class PostgresLabelAnchorCache implements LabelAnchorCache {
     );
   }
 
-  private getDatasetVersion(): string {
-    const value = this.configService.get<string>("tiles.datasetVersion");
-    return typeof value === "string" ? value : "";
+  private getDatasetVersionId(): string {
+    if (!this.datasetVersionId) {
+      throw new Error("PostgresLabelAnchorCache used before setDatasetVersionId() was called");
+    }
+    return this.datasetVersionId;
   }
 }

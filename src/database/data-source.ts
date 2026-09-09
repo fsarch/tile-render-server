@@ -14,9 +14,7 @@ import { load } from "js-yaml";
 import { DatasetVersion } from "./entities/dataset-version.entity.js";
 import { LabelAnchor } from "./entities/label-anchor.entity.js";
 import { Template } from "./entities/template.entity.js";
-import { CreateLabelAnchors1786019144724 } from "./migrations/1786019144724-create-label-anchors.js";
-import { CreateDatasetVersions1788882245338 } from "./migrations/1788882245338-create-dataset-versions.js";
-import { CreateTemplates1788882245339 } from "./migrations/1788882245339-create-templates.js";
+import { CreateSchema1786019144724 } from "./migrations/1786019144724-create-schema.js";
 
 type DatabaseConfig = {
   type: string;
@@ -51,5 +49,5 @@ export default new DataSource({
   database: databaseConfig.database,
   port: databaseConfig.port ?? 5432,
   entities: [LabelAnchor, DatasetVersion, Template],
-  migrations: [CreateLabelAnchors1786019144724, CreateDatasetVersions1788882245338, CreateTemplates1788882245339],
+  migrations: [CreateSchema1786019144724],
 });
