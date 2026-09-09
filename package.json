@@ -1,6 +1,6 @@
 {
   "name": "tile-render-server",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "On-demand SVG tile API backed by PMTiles",
   "main": "dist/main.js",
   "scripts": {
