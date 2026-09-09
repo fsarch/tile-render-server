@@ -1,3 +1,16 @@
+# Protects every route except the ones explicitly marked @Public() (tile rendering,
+# template listing/tile-rendering) - notably POST /v1/templates(/:id/activate) and all
+# of /v1/dataset-versions. Required for `npm start`.
+#
+# type: oidc validates a `Authorization: Bearer <jwt>` against the given provider's
+# JWKS - no local user list to manage. The value below is the shared fsarch dev/test
+# Keycloak realm used by other fsarch *-server repos (see
+# ~/.claude/fsarch-test-credentials.md for how to fetch a test token) - replace with
+# your own identity provider for anything beyond local development.
+auth:
+  type: oidc
+  discovery_url: https://login-dev.vb3d.de/realms/VB3D-Dev/.well-known/openid-configuration
+
 tiles:
   # No "input" setting here anymore - the pmtiles path comes exclusively from the
   # active row of the dataset_versions table (see the "Datasets and themes" section of

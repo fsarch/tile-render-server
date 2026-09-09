@@ -14,6 +14,10 @@ async function bootstrap(): Promise<void> {
       version: "1.0.0",
       path: "docs",
     })
+    // Everything is protected by default except routes explicitly marked @Public()
+    // (tile rendering, template listing/tile-rendering) - see auth.* in config.yaml.
+    // Creating/activating templates and dataset_versions requires a valid token.
+    .enableAuth()
     .setDatabase(DATABASE_OPTIONS)
     .build();
 

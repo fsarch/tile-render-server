@@ -75,4 +75,72 @@ describe("TemplatesController", () => {
       { id: "b", name: "dark", isActive: false },
     ]);
   });
+
+  describe("create", () => {
+    it("creates a template from name + colors and returns its summary", async () => {
+      const templateService = {
+        create: vi.fn().mockResolvedValue({ id: "a", name: "dark", colors: { "--map-water": "#123456" }, isActive: false }),
+      } as unknown as TemplateService;
+      const controller = new TemplatesController({} as TilesService, templateService);
+
+      const result = await controller.create({ name: "dark", colors: { "--map-water": "#123456" } });
+
+      expect(templateService.create).toHaveBeenCalledWith("dark", { "--map-water": "#123456" });
+      expect(result).toEqual({ id: "a", name: "dark", isActive: false });
+    });
+
+    it("defaults colors to an empty object when omitted", async () => {
+      const templateService = {
+        create: vi.fn().mockResolvedValue({ id: "a", name: "dark", colors: {}, isActive: false }),
+      } as unknown as TemplateService;
+      const controller = new TemplatesController({} as TilesService, templateService);
+
+      await controller.create({ name: "dark" });
+
+      expect(templateService.create).toHaveBeenCalledWith("dark", {});
+    });
+
+    it("rejects a body without a name", async () => {
+      const controller = new TemplatesController({} as TilesService, {} as TemplateService);
+      await expect(controller.create({})).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it("rejects a non-object body", async () => {
+      const controller = new TemplatesController({} as TilesService, {} as TemplateService);
+      await expect(controller.create("dark")).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it("rejects colors that isn't an object", async () => {
+      const controller = new TemplatesController({} as TilesService, {} as TemplateService);
+      await expect(controller.create({ name: "dark", colors: "not-an-object" })).rejects.toBeInstanceOf(
+        BadRequestException
+      );
+    });
+
+    it("rejects a color value that isn't a string", async () => {
+      const controller = new TemplatesController({} as TilesService, {} as TemplateService);
+      await expect(
+        controller.create({ name: "dark", colors: { "--map-water": 123 } })
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe("activate", () => {
+    it("activates a template by id and returns its summary", async () => {
+      const templateService = {
+        activate: vi.fn().mockResolvedValue({ id: VALID_ID, name: "dark", colors: {}, isActive: true }),
+      } as unknown as TemplateService;
+      const controller = new TemplatesController({} as TilesService, templateService);
+
+      const result = await controller.activate(VALID_ID);
+
+      expect(templateService.activate).toHaveBeenCalledWith(VALID_ID);
+      expect(result).toEqual({ id: VALID_ID, name: "dark", isActive: true });
+    });
+
+    it("rejects an id that isn't a valid uuid", async () => {
+      const controller = new TemplatesController({} as TilesService, {} as TemplateService);
+      await expect(controller.activate("not-a-uuid")).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
 });
