@@ -166,6 +166,14 @@ npm run example
 Der Viewer lädt Tiles über `GET /v1/tiles/:z/:x/:y.svg` vom API-Server und kann bei Bedarf mit `--api-base` auf eine andere URL zeigen.
 Zoom und Kartenposition werden im URL-Hash gespeichert, damit ein Reload dieselbe Ansicht wiederherstellt.
 
+Im Feld "Tile-Quelle" im Header (oder per `?tilesUrl=...`) lässt sich die Tile-Quelle direkt auf eine beliebige Basis-URL umstellen — z. B. die Route eines konkreten Templates auf einer laufenden Instanz:
+
+```text
+https://tiles.braun-vedder.de/templates/454deb18-2d3b-4cd0-853d-98f4397040c7/tiles
+```
+
+Das ersetzt `${apiBase}/v1/tiles` vollständig (unabhängig davon, welches Routenlayout die jeweilige Instanz nach außen exponiert) und deaktiviert währenddessen den Hell/Dunkel-Umschalter, da der auf dem konkret aktiven Template von `apiBase` aufbaut. Ein leeres Feld setzt wieder auf `${apiBase}/v1/tiles` zurück.
+
 ## Batch Rendering
 
 ```bash

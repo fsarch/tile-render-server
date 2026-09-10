@@ -7,7 +7,25 @@ const initialZoom = Number(hashParams.get("zoom") ?? searchParams.get("zoom") ??
 const initialLat = Number(hashParams.get("lat") ?? searchParams.get("lat") ?? 20);
 const initialLng = Number(hashParams.get("lng") ?? searchParams.get("lng") ?? 0);
 const initialTheme = hashParams.get("theme") === "dark" ? "dark" : "light";
-const plainTilesUrl = `${apiBase}/v1/tiles/{z}/{x}/{y}.svg`;
+
+// --- Tile source -----------------------------------------------------------------
+//
+// The default tile source is the plain, active-template route under apiBase
+// (/v1/tiles/{z}/{x}/{y}.svg - see the light/dark toggle further below for the named-
+// template routes it builds on top of that same apiBase). `?tilesUrl=` (or the
+// "Tile-Quelle" field in the header, which is just a live editor for the same value)
+// overrides that entirely with an arbitrary base - e.g. a specific template's route on
+// a deployed instance such as
+// https://tiles.braun-vedder.de/templates/<id>/tiles - so a particular template can be
+// pinned and inspected without needing apiBase to also point at that instance, and
+// independent of whatever route layout that instance's reverse proxy exposes.
+const defaultTilesBase = () => `${apiBase}/v1/tiles`;
+let tilesBaseOverride = (searchParams.get("tilesUrl") ?? "").replace(/\/+$/, "");
+let plainTilesUrl = buildTileUrl(tilesBaseOverride || defaultTilesBase());
+
+function buildTileUrl(base) {
+  return `${base}/{z}/{x}/{y}.svg`;
+}
 
 const map = L.map("map", {
   center: [initialLat, initialLng],
@@ -68,6 +86,63 @@ function syncUrlHash() {
     "",
     `${window.location.pathname}${window.location.search}${nextHash}`
   );
+}
+
+// Mirrors a value into the URL's query string (as opposed to syncUrlHash's hash) -
+// used for tilesUrl, so a pinned tile source round-trips through reload/copy-paste the
+// same way apiBase already does, without polluting the hash (which is reserved for
+// map view state).
+function syncSearchParam(name, value) {
+  const nextParams = new URLSearchParams(window.location.search);
+  if (value) {
+    nextParams.set(name, value);
+  } else {
+    nextParams.delete(name);
+  }
+  const nextSearch = nextParams.toString();
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`
+  );
+}
+
+// Applies a new tile source, either from the "Tile-Quelle" field or from the initial
+// ?tilesUrl= param (see setupTilesSourceForm below). An empty value resets to the
+// default (apiBase + /v1/tiles) and re-enables the named-template light/dark toggle;
+// a non-empty value pins the map to exactly that base and disables the toggle, since
+// the toggle is built relative to apiBase and would otherwise silently overwrite the
+// pin the next time it's clicked.
+function applyTilesSource(rawValue) {
+  const value = (rawValue ?? "").trim().replace(/\/+$/, "");
+  tilesBaseOverride = value;
+  plainTilesUrl = buildTileUrl(value || defaultTilesBase());
+  themeTileUrls.light = plainTilesUrl;
+  tileLayer.setUrl(plainTilesUrl);
+  syncSearchParam("tilesUrl", value);
+
+  if (value) {
+    themeTileUrls.dark = null;
+    toggleContainer.hidden = true;
+    if (currentTheme === "dark") {
+      currentTheme = "light";
+      document.body.classList.remove("dark-mode");
+    }
+    syncUrlHash();
+  } else {
+    loadThemeToggle();
+  }
+}
+
+function setupTilesSourceForm() {
+  const form = document.getElementById("tiles-source-form");
+  const input = document.getElementById("tiles-source-input");
+  input.value = tilesBaseOverride;
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    applyTilesSource(input.value);
+    input.value = tilesBaseOverride;
+  });
 }
 
 // --- Light/dark theme toggle --------------------------------------------------------
@@ -138,4 +213,9 @@ async function loadThemeToggle() {
 
 syncUrlHash();
 map.on("moveend", syncUrlHash);
-loadThemeToggle();
+setupTilesSourceForm();
+if (tilesBaseOverride) {
+  toggleContainer.hidden = true;
+} else {
+  loadThemeToggle();
+}

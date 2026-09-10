@@ -17,8 +17,18 @@
       <header class="panel">
         <div class="panel-text">
           <h1>SVG Tile Example</h1>
-          <p>Quelle: <code>/v1/tiles/{z}/{x}/{y}.svg</code></p>
-          <p>Optional: <code>?apiBase=http://127.0.0.1:3000</code></p>
+          <p>Standard: <code>/v1/tiles/{z}/{x}/{y}.svg</code>, optional <code>?apiBase=http://127.0.0.1:3000</code></p>
+          <form id="tiles-source-form" class="tiles-source">
+            <label for="tiles-source-input">Tile-Quelle</label>
+            <input
+              id="tiles-source-input"
+              type="text"
+              placeholder="z.B. https://tiles.braun-vedder.de/templates/<id>/tiles"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button type="submit">Übernehmen</button>
+          </form>
           <p>Zoom und Position bleiben im URL-Hash erhalten.</p>
         </div>
         <div id="theme-toggle" class="theme-toggle" hidden>
