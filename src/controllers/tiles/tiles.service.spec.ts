@@ -1,11 +1,23 @@
-import { NotFoundException } from "@nestjs/common";
+import { NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import type { ConfigService } from "@nestjs/config";
 import { describe, expect, it, vi } from "vitest";
 import { TilesService } from "./tiles.service.js";
+import { RenderQueueFullError, type RenderWorkerPool } from "./render-worker-pool.js";
 import type { PostgresLabelAnchorCache } from "../../repositories/label-anchor/label-anchor-cache.postgres.js";
 import type { DatasetVersionService } from "../../repositories/dataset-version/dataset-version.service.js";
 import type { TemplateService } from "../../repositories/template/template.service.js";
 import type { IStorageProvider } from "../../storage/storage-provider.interface.js";
+
+// TestTilesService always overrides renderSvg too (see below), so this fake never
+// actually renders anything - it only exists so onModuleInit()/onModuleDestroy() (which
+// unconditionally create/close a render pool - see TilesService) don't spawn real
+// worker threads in these tests.
+function createFakeRenderPool(): RenderWorkerPool {
+  return {
+    render: vi.fn(),
+    close: vi.fn().mockResolvedValue(undefined),
+  } as unknown as RenderWorkerPool;
+}
 
 // Fake stub: TilesService only calls setDatasetVersionId (to scope the cache to the
 // active dataset_versions row) and threads the rest through to renderSvg - none of
@@ -69,6 +81,37 @@ class TestTilesService extends TilesService {
 
   protected override async renderSvg(tileBuffer: ArrayBuffer | Uint8Array, options: Record<string, unknown>) {
     return this.renderSvgMock(tileBuffer, options);
+  }
+
+  protected override createRenderPool(): RenderWorkerPool {
+    return createFakeRenderPool();
+  }
+}
+
+// Unlike TestTilesService above, this leaves the real renderSvg in place - so these
+// tests exercise TilesService's own delegation to the render pool (see
+// render-worker-pool.spec.ts for the pool's internal mechanics).
+class PoolTestTilesService extends TilesService {
+  constructor(
+    configService: ConfigService,
+    private readonly openArchiveMock: (inputPath: string) => Promise<{
+      close: () => Promise<void>;
+      getTile: (z: number, x: number, y: number) => Promise<ArrayBuffer | Uint8Array | undefined>;
+      getHeader: () => { maxZoom: number };
+    }>,
+    private readonly renderPool: RenderWorkerPool,
+    datasetVersionService: DatasetVersionService = createDatasetVersionService(),
+    templateService: TemplateService = createTemplateService(null)
+  ) {
+    super(configService, fakeLabelAnchorCache, datasetVersionService, templateService, createStorageProvider(), createStorageProvider());
+  }
+
+  protected override openArchive(inputPath: string) {
+    return this.openArchiveMock(inputPath);
+  }
+
+  protected override createRenderPool(): RenderWorkerPool {
+    return this.renderPool;
   }
 }
 
@@ -370,5 +413,53 @@ describe("TilesService", () => {
     );
 
     expect(service.getCacheControl()).toBe("public, max-age=3600");
+  });
+
+  describe("render pool delegation (real renderSvg)", () => {
+    function archiveFactory(getTile = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]))) {
+      return vi.fn().mockResolvedValue({
+        close: vi.fn().mockResolvedValue(undefined),
+        getTile,
+        getHeader: () => ({ maxZoom: 14 }),
+      });
+    }
+
+    it("renders via the pool, not directly, passing the fetched bytes/options/labelAnchorCache through", async () => {
+      const pool = { render: vi.fn().mockResolvedValue("<svg>from-pool</svg>"), close: vi.fn() } as unknown as RenderWorkerPool;
+      const service = new PoolTestTilesService(createConfigService({ "tiles.labels": true }), archiveFactory(), pool);
+
+      const svg = await service.renderTileSvg(3, 4, 5);
+
+      expect(svg).toBe("<svg>from-pool</svg>");
+      expect(pool.render).toHaveBeenCalledWith(
+        expect.any(Uint8Array),
+        expect.objectContaining({ labels: true, zoom: 3, tileX: 4, tileY: 5 }),
+        fakeLabelAnchorCache
+      );
+    });
+
+    it("maps RenderQueueFullError to a 503", async () => {
+      const pool = { render: vi.fn().mockRejectedValue(new RenderQueueFullError()), close: vi.fn() } as unknown as RenderWorkerPool;
+      const service = new PoolTestTilesService(createConfigService({}), archiveFactory(), pool);
+
+      await expect(service.renderTileSvg(3, 4, 5)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    });
+
+    it("propagates any other render error unchanged", async () => {
+      const pool = { render: vi.fn().mockRejectedValue(new Error("boom")), close: vi.fn() } as unknown as RenderWorkerPool;
+      const service = new PoolTestTilesService(createConfigService({}), archiveFactory(), pool);
+
+      await expect(service.renderTileSvg(3, 4, 5)).rejects.toThrow("boom");
+    });
+
+    it("closes the render pool on module destroy", async () => {
+      const pool = { render: vi.fn(), close: vi.fn().mockResolvedValue(undefined) } as unknown as RenderWorkerPool;
+      const service = new PoolTestTilesService(createConfigService({}), archiveFactory(), pool);
+
+      await service.onModuleInit();
+      await service.onModuleDestroy();
+
+      expect(pool.close).toHaveBeenCalledTimes(1);
+    });
   });
 });

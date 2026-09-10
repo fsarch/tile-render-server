@@ -1,9 +1,10 @@
-import { NotFoundException, Inject, Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { NotFoundException, ServiceUnavailableException, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { availableParallelism } from "node:os";
 import { dirname } from "node:path";
 import { computeOverzoomTransform } from "../../core/geometry.js";
 import { openPMTilesArchiveFromStorage, type LocalPMTilesArchive } from "../../core/pmtiles.js";
-import { renderTileToSvg, type RenderOptions } from "../../core/renderer.js";
+import type { RenderOptions } from "../../core/renderer.js";
 import { injectStyleTemplate } from "../../core/svg.js";
 import type { LabelAnchorCache } from "../../core/label-anchor-cache.js";
 import { PostgresLabelAnchorCache } from "../../repositories/label-anchor/label-anchor-cache.postgres.js";
@@ -11,17 +12,25 @@ import { DatasetVersionService } from "../../repositories/dataset-version/datase
 import { TemplateService } from "../../repositories/template/template.service.js";
 import { CACHE_STORAGE_PROVIDER, DATA_STORAGE_PROVIDER } from "../../storage/storage.module.js";
 import type { IStorageProvider } from "../../storage/storage-provider.interface.js";
+import type { StorageConfig } from "../../storage/storage-config.types.js";
+import { RenderQueueFullError, RenderWorkerPool } from "./render-worker-pool.js";
 
 type TileArchive = Pick<LocalPMTilesArchive, "close" | "getHeader" | "getTile">;
 
 @Injectable()
 export class TilesService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(TilesService.name);
   private archive?: TileArchive;
   private archivePromise?: Promise<TileArchive>;
   // Set alongside the archive itself (see getInputPath) - scopes cache entries to the
   // dataset they were rendered from, so a dataset_versions swap (+ API restart) can
   // never serve a stale cached tile left over from a previous, different dataset.
   private datasetVersionId?: string;
+  // The resolved dataset_versions path (see getInputPath) - stashed so createRenderPool
+  // can hand it to worker threads once the archive itself has finished opening.
+  private inputPath?: string;
+  private renderPool?: RenderWorkerPool;
+  private renderPoolPromise?: Promise<RenderWorkerPool>;
 
   constructor(
     private readonly configService: ConfigService,
@@ -34,6 +43,7 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     await this.getArchive();
+    await this.getRenderPool();
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -42,6 +52,13 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
     this.archivePromise = undefined;
     if (archive) {
       await archive.close();
+    }
+
+    const pool = this.renderPool ?? (this.renderPoolPromise ? await this.renderPoolPromise.catch(() => undefined) : undefined);
+    this.renderPool = undefined;
+    this.renderPoolPromise = undefined;
+    if (pool) {
+      await pool.close();
     }
   }
 
@@ -175,13 +192,91 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  protected renderSvg(
+  // The default (production) path hands rendering off to a pool of worker threads (see
+  // RenderWorkerPool) instead of calling renderTileToSvg directly on the main thread -
+  // that's real CPU work (MVT decode, geometry, SVG string building) that would
+  // otherwise serialize concurrent requests on Node's single JS thread. `archive` isn't
+  // forwarded: each worker opens its own for the cross-tile neighbor/ancestor lookups
+  // renderTileToSvg needs internally (see render.worker.ts) - it stays a parameter here
+  // only so tests can keep overriding this method with the same shape they always have.
+  protected async renderSvg(
     tileBuffer: ArrayBuffer | Uint8Array,
     options: RenderOptions,
-    archive: TileArchive,
+    _archive: TileArchive,
     labelAnchorCache: LabelAnchorCache
   ): Promise<string | null> {
-    return renderTileToSvg(tileBuffer, options, archive, labelAnchorCache);
+    const pool = await this.getRenderPool();
+    try {
+      return await pool.render(tileBuffer, options, labelAnchorCache);
+    } catch (error) {
+      if (error instanceof RenderQueueFullError) {
+        throw new ServiceUnavailableException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  private async getRenderPool(): Promise<RenderWorkerPool> {
+    if (this.renderPool) {
+      return this.renderPool;
+    }
+
+    if (!this.renderPoolPromise) {
+      // Needs inputPath (and, transitively, datasetVersionId) resolved first - both are
+      // set as a side effect of getArchive() -> getInputPath().
+      this.renderPoolPromise = this.getArchive()
+        .then(() => this.createRenderPool())
+        .then((pool) => {
+          this.renderPool = pool;
+          return pool;
+        })
+        .catch((error) => {
+          this.renderPoolPromise = undefined;
+          throw error;
+        });
+    }
+
+    return this.renderPoolPromise;
+  }
+
+  protected createRenderPool(): RenderWorkerPool {
+    const storageConfig = this.configService.get<StorageConfig>("storage.data");
+    if (storageConfig === undefined) {
+      throw new Error('Missing "storage.data" in config.yaml');
+    }
+    if (!this.inputPath) {
+      throw new Error("createRenderPool called before the input path was resolved");
+    }
+
+    const { concurrency, source } = this.resolveRenderConcurrency();
+    this.logger.log(`Starting render worker pool with concurrency=${concurrency} (${source})`);
+
+    return new RenderWorkerPool({
+      storageConfig,
+      inputPath: this.inputPath,
+      labels: this.getBooleanConfig("tiles.labels", false),
+      roadLabels: this.getBooleanConfig("tiles.roadLabels", false),
+      natureLabels: this.getBooleanConfig("tiles.natureLabels", false),
+      concurrency,
+    });
+  }
+
+  // How many worker threads render concurrently within this one process (see
+  // RenderWorkerPool) - configurable via tiles.renderConcurrency (config.yaml). This is
+  // the lever for using more of a single pod/instance's CPU allocation without scaling
+  // out more instances (which mainly buys memory overhead, not more rendering
+  // throughput, once a single instance is already CPU-bound). Defaults to the CPU
+  // count, capped at 8 - the same default the batch CLI uses for its own worker pool.
+  // `source` is only for the startup log (see createRenderPool) - explains *why* this
+  // number was picked, since availableParallelism() reflects the container's own cgroup
+  // CPU quota under k8s, not necessarily the host's full core count.
+  private resolveRenderConcurrency(): { concurrency: number; source: string } {
+    const configured = Number(this.configService.get<unknown>("tiles.renderConcurrency"));
+    if (Number.isInteger(configured) && configured > 0) {
+      return { concurrency: configured, source: "tiles.renderConcurrency" };
+    }
+    const cpuCount = availableParallelism();
+    return { concurrency: Math.max(1, Math.min(8, cpuCount)), source: `default, availableParallelism()=${cpuCount}` };
   }
 
   // The pmtiles path comes exclusively from the dataset_versions table now (see
@@ -201,7 +296,8 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
     }
     this.datasetVersionId = activeVersion.id;
     this.labelAnchorCache.setDatasetVersionId(activeVersion.id);
-    return activeVersion.path.trim();
+    this.inputPath = activeVersion.path.trim();
+    return this.inputPath;
   }
 
   private getBooleanConfig(key: string, fallback: boolean): boolean {

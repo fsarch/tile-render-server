@@ -30,6 +30,15 @@ tiles:
   # above the dataset's own max zoom get a 404, as without this setting). A value at or
   # below the dataset's max zoom is a no-op - this only ever extends serving upward.
   # maxZoom: 18
+  # Optional: how many worker threads render tiles concurrently within this one process
+  # (see src/controllers/tiles/render-worker-pool.ts) - the actual rendering work (MVT
+  # decode, geometry, SVG string building) is synchronous CPU work that would otherwise
+  # serialize concurrent requests on Node's single JS thread. This is how one instance
+  # uses more of its own CPU allocation; it's independent of running multiple instances
+  # (e.g. behind a k8s HPA), which mainly buys you failover/memory headroom, not more
+  # rendering throughput once a single instance is already CPU-bound. Omit to default to
+  # the CPU count, capped at 8 (same default the batch CLI uses for its own pool).
+  # renderConcurrency: 4
 
 # Where the REST API reads/writes files, independent of local disk vs. S3 - see
 # src/storage/. Required for `npm start`; not used by `npm test` or the batch CLI

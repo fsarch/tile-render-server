@@ -140,6 +140,7 @@ If a layer is missing in a tile, skip it without failing.
 - Skip already existing SVG files by default.
 - Support overwrite mode (`--overwrite`).
 - Keep memory usage low.
+- The REST API must also render in parallel, not just the batch CLI: on-demand rendering (MVT decode, geometry, SVG string building) is CPU work that would otherwise serialize concurrent requests on Node's single JS thread. It must use a configurable-size pool of worker threads (`tiles.renderConcurrency`) rather than relying solely on running more API instances/replicas — horizontal scaling (more pods/instances) is a separate, complementary lever that mainly buys failover/memory headroom, not more rendering throughput per instance once that instance is already CPU-bound.
 
 ## 11. Logging
 During generation, show:
