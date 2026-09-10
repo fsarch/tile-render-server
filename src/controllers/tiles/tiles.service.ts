@@ -1,7 +1,9 @@
 import { NotFoundException, ServiceUnavailableException, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { withSpan } from "@fsarch/server/tracing";
 import { availableParallelism } from "node:os";
 import { dirname } from "node:path";
+import { TRACER_NAME } from "../../tracing.js";
 import { computeOverzoomTransform } from "../../core/geometry.js";
 import { openPMTilesArchiveFromStorage, type LocalPMTilesArchive } from "../../core/pmtiles.js";
 import type { RenderOptions } from "../../core/renderer.js";
@@ -67,30 +69,57 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
     return value && value.trim().length > 0 ? value.trim() : "public, max-age=3600";
   }
 
+  // Wrapped in one root span per request ("tiles.render") so a trace shows the full
+  // request breakdown - cache lookup, source tile fetch, actual render, cache write,
+  // template lookup - as its nested children (see renderOrGetCached and
+  // RenderWorkerPool for the more granular spans underneath). Safe to leave in place
+  // unconditionally: with tracing disabled/uninitialized this runs against
+  // OpenTelemetry's no-op tracer (see src/tracing.ts).
   async renderTileSvg(z: number, x: number, y: number, templateId?: string): Promise<string> {
-    const archive = await this.getArchive();
-    const datasetMaxZoom = archive.getHeader().maxZoom;
-    if (z > this.getServingMaxZoom(datasetMaxZoom)) {
-      throw new NotFoundException(`Tile ${z}/${x}/${y} is not available`);
-    }
+    return withSpan(
+      "tiles.render",
+      async () => {
+        const archive = await this.getArchive();
+        const datasetMaxZoom = archive.getHeader().maxZoom;
+        if (z > this.getServingMaxZoom(datasetMaxZoom)) {
+          throw new NotFoundException(`Tile ${z}/${x}/${y} is not available`);
+        }
 
-    const svg = await this.renderOrGetCached(archive, datasetMaxZoom, z, x, y);
+        const svg = await this.renderOrGetCached(archive, datasetMaxZoom, z, x, y);
 
-    // Styling is a separate, cheap step from rendering (see injectStyleTemplate):
-    // looked up fresh on every request (unlike the dataset path above, which is
-    // resolved once at archive-open time), so activating a different template - or
-    // requesting a specific one by id (GET /v1/templates/:id/tiles/...) - takes effect
-    // immediately, without restarting the API or touching the rendered tile itself. No
-    // active/matching template just means every themeable color keeps its default.
-    // This also applies on a cache hit - storage.cache only ever holds the un-styled
-    // render (see renderOrGetCached), so it's unaffected by which template is active.
-    const template = templateId
-      ? await this.templateService.getById(templateId)
-      : await this.templateService.getActive();
-    if (templateId && !template) {
-      throw new NotFoundException(`Template "${templateId}" not found`);
-    }
-    return injectStyleTemplate(svg, template?.colors);
+        // Styling is a separate, cheap step from rendering (see injectStyleTemplate):
+        // looked up fresh on every request (unlike the dataset path above, which is
+        // resolved once at archive-open time), so activating a different template - or
+        // requesting a specific one by id (GET /v1/templates/:id/tiles/...) - takes
+        // effect immediately, without restarting the API or touching the rendered tile
+        // itself. No active/matching template just means every themeable color keeps
+        // its default. This also applies on a cache hit - storage.cache only ever
+        // holds the un-styled render (see renderOrGetCached), so it's unaffected by
+        // which template is active.
+        return withSpan(
+          "tiles.render.apply_template",
+          async () => {
+            const template = templateId
+              ? await this.templateService.getById(templateId)
+              : await this.templateService.getActive();
+            if (templateId && !template) {
+              throw new NotFoundException(`Template "${templateId}" not found`);
+            }
+            return injectStyleTemplate(svg, template?.colors);
+          },
+          { tracerName: TRACER_NAME }
+        );
+      },
+      {
+        tracerName: TRACER_NAME,
+        attributes: {
+          "tile.z": z,
+          "tile.x": x,
+          "tile.y": y,
+          ...(templateId ? { "tile.template_id": templateId } : {}),
+        },
+      }
+    );
   }
 
   // Rendering (this) and styling (injectStyleTemplate, above) are kept separate
@@ -104,40 +133,68 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
     y: number
   ): Promise<string> {
     const cacheKey = `${this.datasetVersionId}/${z}/${x}/${y}.svg`;
-    if (await this.cacheStorage.exists(cacheKey)) {
-      return (await this.cacheStorage.readFile(cacheKey)).toString("utf8");
+
+    const cached = await withSpan(
+      "tiles.render.cache_lookup",
+      async (span) => {
+        const hit = await this.cacheStorage.exists(cacheKey);
+        span.setAttribute("cache.hit", hit);
+        return hit ? (await this.cacheStorage.readFile(cacheKey)).toString("utf8") : undefined;
+      },
+      { tracerName: TRACER_NAME, attributes: { "cache.key": cacheKey } }
+    );
+    if (cached !== undefined) {
+      return cached;
     }
 
     // Beyond datasetMaxZoom, there's no real data for (z, x, y) - fetch the deepest
     // real ancestor tile instead and let renderSvg's overzoom transform below crop and
     // scale its geometry to stand in for the requested tile.
     const { sourceZoom, sourceX, sourceY } = computeOverzoomTransform(z, x, y, datasetMaxZoom);
-    const tileData = await archive.getTile(sourceZoom, sourceX, sourceY);
+    const tileData = await withSpan(
+      "tiles.render.fetch_source_tile",
+      () => archive.getTile(sourceZoom, sourceX, sourceY),
+      {
+        tracerName: TRACER_NAME,
+        attributes: { "tile.source_z": sourceZoom, "tile.source_x": sourceX, "tile.source_y": sourceY },
+      }
+    );
     if (!tileData || tileData.byteLength === 0) {
       throw new NotFoundException(`Tile ${z}/${x}/${y} is empty or missing`);
     }
 
-    const svg = await this.renderSvg(
-      tileData,
-      {
-        labels: this.getBooleanConfig("tiles.labels", false),
-        roadLabels: this.getBooleanConfig("tiles.roadLabels", false),
-        natureLabels: this.getBooleanConfig("tiles.natureLabels", false),
-        zoom: z,
-        tileX: x,
-        tileY: y,
-        datasetMaxZoom,
-      },
-      archive,
-      this.labelAnchorCache
+    const svg = await withSpan(
+      "tiles.render.render_svg",
+      () =>
+        this.renderSvg(
+          tileData,
+          {
+            labels: this.getBooleanConfig("tiles.labels", false),
+            roadLabels: this.getBooleanConfig("tiles.roadLabels", false),
+            natureLabels: this.getBooleanConfig("tiles.natureLabels", false),
+            zoom: z,
+            tileX: x,
+            tileY: y,
+            datasetMaxZoom,
+          },
+          archive,
+          this.labelAnchorCache
+        ),
+      { tracerName: TRACER_NAME }
     );
 
     if (!svg) {
       throw new NotFoundException(`Tile ${z}/${x}/${y} could not be rendered`);
     }
 
-    await this.cacheStorage.mkdir(dirname(cacheKey), { recursive: true });
-    await this.cacheStorage.writeFile(cacheKey, Buffer.from(svg, "utf8"));
+    await withSpan(
+      "tiles.render.cache_write",
+      async () => {
+        await this.cacheStorage.mkdir(dirname(cacheKey), { recursive: true });
+        await this.cacheStorage.writeFile(cacheKey, Buffer.from(svg, "utf8"));
+      },
+      { tracerName: TRACER_NAME, attributes: { "cache.key": cacheKey } }
+    );
     return svg;
   }
 

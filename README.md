@@ -107,6 +107,29 @@ Eine Zoomstufe, die von keiner Schicht abgedeckt wird, wird einfach gar nicht ge
 
 Die Batch-CLI ist von `storage.*` komplett unberührt — `--input`/`--output` bleiben immer lokale Dateisystempfade, unabhängig von `config.yaml`.
 
+## Tracing
+
+Verteiltes Tracing (OpenTelemetry) kommt fertig von `@fsarch/server` mit, ist aber standardmäßig aus. Aktivieren über den `tracing:`-Block in `config.yaml` (siehe `@fsarch/server`s eigenes README für alle Details, z.B. Sampler/Exporter-Optionen):
+
+```yaml
+tracing:
+  enabled: true
+  serviceName: tile-render-server # bei --import-Preload (s.u.) Pflicht, sonst optional
+  exporter:
+    type: console # oder otlp-http/otlp-grpc gegen einen echten Collector
+```
+
+Eigene Spans (`withSpan`/`@Span` aus `@fsarch/server/tracing`) sind bereits fest in den Rendering-Pfad eingebaut (siehe `src/tracing.ts` und `CLAUDE.md`) und liefern die Performance-Aufschlüsselung pro Request:
+
+- `tiles.render` (Root-Span pro Request) → `tiles.render.cache_lookup`, `tiles.render.fetch_source_tile`, `tiles.render.render_svg`, `tiles.render.cache_write`, `tiles.render.apply_template`
+- `render_worker_pool.render` (unter `tiles.render.render_svg`) trägt `queue.wait_ms` und `worker.render_ms` als Attribute — damit lässt sich direkt sehen, ob ein langsamer Request an der eigentlichen Renderzeit oder an einem überlasteten Worker-Pool liegt (siehe `tiles.renderConcurrency`).
+
+Diese eigenen Spans funktionieren bereits mit `npm start`/`npm run build && node dist/main.js`, ganz ohne weiteres Setup — `FsArchAppBuilder.build()` initialisiert den OpenTelemetry-SDK selbst. Für die generischen Auto-Instrumentierungs-Spans (HTTP/Express/Postgres) muss der Prozess zusätzlich mit dem Preload gestartet werden (im `Dockerfile` bereits per `NODE_OPTIONS` gesetzt):
+
+```bash
+node --import @fsarch/server/register dist/main.js
+```
+
 ## Datasets und Themes
 
 Der Pfad zur `planet.pmtiles`-Datei kommt nicht mehr aus `config.yaml` (kein `tiles.input` mehr), sondern ausschließlich aus der `dataset_versions`-Tabelle — genau eine Zeile ist per `is_active` aktiv; `path` wird relativ zu `storage.data` aufgelöst (s.o.). Es gibt noch keine Verwaltungs-API dafür; Zeilen werden direkt per SQL angelegt/aktiviert:

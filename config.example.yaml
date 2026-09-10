@@ -11,6 +11,23 @@ auth:
   type: oidc
   discovery_url: https://login-dev.vb3d.de/realms/VB3D-Dev/.well-known/openid-configuration
 
+# Optional, off by default. OpenTelemetry tracing courtesy of @fsarch/server - see its
+# own README for the full option set (sampler types, otlp-http/otlp-grpc exporters,
+# headers, ...) and README.md's "Tracing" section for how the custom spans this codebase
+# adds (src/tracing.ts, TilesService, RenderWorkerPool) break down a request's time
+# between cache lookup / source tile fetch / actual render / cache write / template
+# lookup, and - crucially - between time spent queued vs. actually rendering inside a
+# worker thread (render_worker_pool.render's queue.wait_ms/worker.render_ms attributes).
+# These custom spans work with a plain `npm start` / `node dist/main.js`; the generic
+# HTTP/Express/Postgres auto-instrumentation additionally needs the process launched
+# with `node --import @fsarch/server/register dist/main.js` (already wired into the
+# Dockerfile via NODE_OPTIONS).
+# tracing:
+#   enabled: true
+#   serviceName: tile-render-server # required when using the --import preload above
+#   exporter:
+#     type: console # or otlp-http/otlp-grpc against a real collector
+
 tiles:
   # No "input" setting here anymore - the pmtiles path comes exclusively from the
   # active row of the dataset_versions table (see the "Datasets and themes" section of

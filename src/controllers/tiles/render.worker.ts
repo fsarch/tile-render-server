@@ -67,14 +67,16 @@ port.on("message", async (message: ToWorkerMessage) => {
   }
 
   const { jobId, tileBuffer, options } = message;
+  const startedAt = performance.now();
   try {
     const svg = await renderTileToSvg(tileBuffer, options, archive, remoteLabelAnchorCache);
-    port.postMessage({ type: "result", jobId, svg } satisfies FromWorkerMessage);
+    port.postMessage({ type: "result", jobId, svg, renderMs: performance.now() - startedAt } satisfies FromWorkerMessage);
   } catch (error) {
     port.postMessage({
       type: "error",
       jobId,
       message: error instanceof Error ? error.message : String(error),
+      renderMs: performance.now() - startedAt,
     } satisfies FromWorkerMessage);
   }
 });

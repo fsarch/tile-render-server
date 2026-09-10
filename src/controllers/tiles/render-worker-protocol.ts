@@ -26,6 +26,11 @@ export type ToWorkerMessage =
 export type FromWorkerMessage =
   | { type: "anchor-get"; requestId: number; key: LabelAnchorKey }
   | { type: "anchor-set"; requestId: number; key: LabelAnchorKey; value: GlobalAreaAnchor | null }
-  | { type: "result"; jobId: number; svg: string | null }
-  | { type: "error"; jobId: number; message: string }
+  // renderMs is the worker's own measured wall-clock time for the renderTileToSvg call
+  // (decode + geometry + SVG string building, including any cross-tile archive/anchor-
+  // cache round-trips) - reported back so the pool can attach it to its "render_worker_
+  // pool.render" span as an attribute, without needing a full tracing SDK inside every
+  // worker thread (see render-worker-pool.ts).
+  | { type: "result"; jobId: number; svg: string | null; renderMs: number }
+  | { type: "error"; jobId: number; message: string; renderMs: number }
   | { type: "closed" };

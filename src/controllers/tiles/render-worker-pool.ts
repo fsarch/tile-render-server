@@ -1,6 +1,9 @@
 import { Worker } from "node:worker_threads";
+import type { Span as OtelSpan } from "@opentelemetry/api";
+import { withSpan } from "@fsarch/server/tracing";
 import type { LabelAnchorCache } from "../../core/label-anchor-cache.js";
 import type { RenderOptions } from "../../core/renderer.js";
+import { TRACER_NAME } from "../../tracing.js";
 import type { FromWorkerMessage, RenderWorkerConfig, ToWorkerMessage } from "./render-worker-protocol.js";
 
 export interface RenderWorkerPoolConfig extends RenderWorkerConfig {
@@ -26,6 +29,11 @@ export class RenderQueueFullError extends Error {
 interface PendingJob {
   resolve: (svg: string | null) => void;
   reject: (error: Error) => void;
+  // The span covering this one render() call end-to-end (see render()) - carried
+  // through the queue/dispatch/result lifecycle so handleMessage can attach timing
+  // attributes (queue wait vs. actual worker time) right before resolving/rejecting.
+  span: OtelSpan;
+  enqueuedAt: number; // performance.now() when render() was called
 }
 
 interface QueuedJob {
@@ -42,7 +50,7 @@ interface WorkerState {
   // worker only ever has one job in flight at a time (renderer.ts never overlaps its
   // own labelAnchorCache calls), so there's no ambiguity in looking this up by worker
   // identity alone.
-  current?: { jobId: number; job: PendingJob; labelAnchorCache: LabelAnchorCache };
+  current?: { jobId: number; job: PendingJob; labelAnchorCache: LabelAnchorCache; dispatchedAt: number };
 }
 
 export type WorkerFactory = (config: RenderWorkerConfig) => Worker;
@@ -95,10 +103,37 @@ export class RenderWorkerPool {
     }
   }
 
+  // One span per call, covering the whole enqueue -> (wait) -> dispatch -> worker ->
+  // result lifecycle - see handleMessage for the queue.wait_ms/worker.render_ms
+  // attributes attached right before the span ends. Guard-clause rejections (pool
+  // closed/queue full) are deliberately inside the span too, so an overload shows up in
+  // traces the same way any other failure would.
   render(
     tileBuffer: ArrayBuffer | Uint8Array,
     options: RenderOptions,
     labelAnchorCache: LabelAnchorCache
+  ): Promise<string | null> {
+    return withSpan(
+      "render_worker_pool.render",
+      (span) => this.enqueue(tileBuffer, options, labelAnchorCache, span),
+      {
+        tracerName: TRACER_NAME,
+        attributes: {
+          "pool.free_workers": this.freeWorkers.length,
+          "pool.queue_length": this.queue.length,
+          ...(Number.isInteger(options.zoom) ? { "tile.z": options.zoom as number } : {}),
+          ...(Number.isInteger(options.tileX) ? { "tile.x": options.tileX as number } : {}),
+          ...(Number.isInteger(options.tileY) ? { "tile.y": options.tileY as number } : {}),
+        },
+      }
+    );
+  }
+
+  private enqueue(
+    tileBuffer: ArrayBuffer | Uint8Array,
+    options: RenderOptions,
+    labelAnchorCache: LabelAnchorCache,
+    span: OtelSpan
   ): Promise<string | null> {
     if (this.closed) {
       return Promise.reject(new Error("RenderWorkerPool is closed"));
@@ -109,7 +144,7 @@ export class RenderWorkerPool {
 
     const buffer = toArrayBuffer(tileBuffer);
     return new Promise<string | null>((resolve, reject) => {
-      const job: PendingJob = { resolve, reject };
+      const job: PendingJob = { resolve, reject, span, enqueuedAt: performance.now() };
       const worker = this.freeWorkers.pop();
       if (worker) {
         this.dispatch(worker, buffer, options, labelAnchorCache, job);
@@ -155,7 +190,7 @@ export class RenderWorkerPool {
     const state = this.workers.get(worker);
     if (!state) return; // worker was removed (crashed) between being freed and dispatch - shouldn't happen
     const jobId = this.nextJobId++;
-    state.current = { jobId, job, labelAnchorCache };
+    state.current = { jobId, job, labelAnchorCache, dispatchedAt: performance.now() };
     worker.postMessage({ type: "render", jobId, tileBuffer, options } satisfies ToWorkerMessage, [tileBuffer]);
   }
 
@@ -170,6 +205,9 @@ export class RenderWorkerPool {
     const current = state.current;
     if (!current || current.jobId !== message.jobId) return; // stale message from a superseded job
     state.current = undefined;
+
+    current.job.span.setAttribute("queue.wait_ms", current.dispatchedAt - current.job.enqueuedAt);
+    current.job.span.setAttribute("worker.render_ms", message.renderMs);
 
     if (message.type === "result") {
       current.job.resolve(message.svg);
@@ -204,8 +242,11 @@ export class RenderWorkerPool {
     const freeIndex = this.freeWorkers.indexOf(state.worker);
     if (freeIndex !== -1) this.freeWorkers.splice(freeIndex, 1);
 
-    state.current?.job.reject(error);
-    state.current = undefined;
+    if (state.current) {
+      state.current.job.span.setAttribute("worker.crashed", true);
+      state.current.job.reject(error);
+      state.current = undefined;
+    }
 
     if (!this.closed) {
       this.spawnWorker(); // keep pool capacity stable across a worker crash

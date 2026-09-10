@@ -60,7 +60,7 @@ describe("RenderWorkerPool", () => {
     const result = pool.render(tileBuffer, { zoom: 3 }, fakeLabelAnchorCache());
 
     expect(workers[0].sent).toEqual([{ type: "render", jobId: 1, tileBuffer, options: { zoom: 3 } }]);
-    workers[0].send({ type: "result", jobId: 1, svg: "<svg />" });
+    workers[0].send({ type: "result", jobId: 1, svg: "<svg />", renderMs: 5 });
 
     expect(await result).toBe("<svg />");
   });
@@ -68,7 +68,7 @@ describe("RenderWorkerPool", () => {
   it("rejects when the worker reports an error", async () => {
     const { pool, workers } = createPool({ concurrency: 1 });
     const result = pool.render(new ArrayBuffer(1), {}, fakeLabelAnchorCache());
-    workers[0].send({ type: "error", jobId: 1, message: "bad tile" });
+    workers[0].send({ type: "error", jobId: 1, message: "bad tile", renderMs: 5 });
 
     await expect(result).rejects.toThrow("bad tile");
   });
@@ -94,7 +94,7 @@ describe("RenderWorkerPool", () => {
     await Promise.resolve();
     expect(cache.set).toHaveBeenCalledWith(key, { fx: 0.1, fy: 0.1 });
 
-    workers[0].send({ type: "result", jobId: 1, svg: "<svg />" });
+    workers[0].send({ type: "result", jobId: 1, svg: "<svg />", renderMs: 5 });
     await expect(result).resolves.toBe("<svg />");
   });
 
@@ -107,13 +107,13 @@ describe("RenderWorkerPool", () => {
 
     expect(workers[0].sent).toHaveLength(1); // second job is queued, not yet sent
 
-    workers[0].send({ type: "result", jobId: 1, svg: "<svg>first</svg>" });
+    workers[0].send({ type: "result", jobId: 1, svg: "<svg>first</svg>", renderMs: 5 });
     expect(await first).toBe("<svg>first</svg>");
 
     expect(workers[0].sent).toHaveLength(2);
     expect(workers[0].sent[1]).toMatchObject({ jobId: 2, options: { zoom: 2 } });
 
-    workers[0].send({ type: "result", jobId: 2, svg: "<svg>second</svg>" });
+    workers[0].send({ type: "result", jobId: 2, svg: "<svg>second</svg>", renderMs: 5 });
     expect(await second).toBe("<svg>second</svg>");
   });
 
@@ -142,7 +142,7 @@ describe("RenderWorkerPool", () => {
     expect(workers[1].sent).toHaveLength(1);
     const dispatched = workers[1].sent[0];
     if (dispatched?.type !== "render") throw new Error("expected a render message");
-    workers[1].send({ type: "result", jobId: dispatched.jobId, svg: "<svg />" });
+    workers[1].send({ type: "result", jobId: dispatched.jobId, svg: "<svg />", renderMs: 5 });
     await expect(next).resolves.toBe("<svg />");
   });
 
