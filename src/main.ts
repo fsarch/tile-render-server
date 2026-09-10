@@ -24,7 +24,32 @@ async function bootstrap(): Promise<void> {
   await app.listen(process.env.PORT ?? 8080);
 }
 
+// A bootstrap failure (bad config, unreachable DB/storage, ...) is the one place
+// nothing has been logged yet - the app never reaches its normal logger/tracing
+// setup. Print the full chain (name, message, stack, and any `cause`, which is where
+// e.g. S3StorageProvider/TilesService attach the original SDK error) rather than just
+// `.message` - a bare `.message` is exactly what silently drops useful detail, e.g.
+// the AWS SDK's generic "UnknownError" fallback name with no indication which
+// operation/bucket/key actually failed or why.
+function describeBootstrapError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+  const lines = [error.stack ?? `${error.name}: ${error.message}`];
+  let cause = error.cause;
+  while (cause) {
+    if (cause instanceof Error) {
+      lines.push(`Caused by: ${cause.stack ?? `${cause.name}: ${cause.message}`}`);
+      cause = cause.cause;
+    } else {
+      lines.push(`Caused by: ${String(cause)}`);
+      break;
+    }
+  }
+  return lines.join("\n");
+}
+
 bootstrap().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  console.error(describeBootstrapError(error));
   process.exit(1);
 });

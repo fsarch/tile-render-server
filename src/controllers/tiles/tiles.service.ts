@@ -139,7 +139,7 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
 
     if (!this.archivePromise) {
       this.archivePromise = this.getInputPath()
-        .then((inputPath) => this.openArchive(inputPath))
+        .then((inputPath) => this.openArchiveWithContext(inputPath))
         .then((archive) => {
           this.archive = archive;
           return archive;
@@ -155,6 +155,24 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
 
   protected openArchive(inputPath: string): Promise<TileArchive> {
     return openPMTilesArchiveFromStorage(this.dataStorage, inputPath);
+  }
+
+  // The underlying storage provider (see S3StorageProvider) already names the
+  // bucket/key/operation a read failed on - what's still missing at that point is
+  // *which* dataset_versions row/path we were even trying to open, without which e.g.
+  // "S3 GetObject failed for s3://bucket/key (AccessDenied)" is hard to connect back
+  // to config. Re-thrown with `cause` so the original error (name, $metadata, stack)
+  // is never lost, just annotated - see main.ts's bootstrap error logging, which walks
+  // the full `cause` chain.
+  private async openArchiveWithContext(inputPath: string): Promise<TileArchive> {
+    try {
+      return await this.openArchive(inputPath);
+    } catch (error) {
+      throw new Error(
+        `Failed to open PMTiles archive for dataset_version ${this.datasetVersionId} at path "${inputPath}": ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
+      );
+    }
   }
 
   protected renderSvg(
