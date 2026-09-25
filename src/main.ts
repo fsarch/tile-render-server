@@ -39,7 +39,9 @@ function describeBootstrapError(error: unknown): string {
   let cause = error.cause;
   while (cause) {
     if (cause instanceof Error) {
-      lines.push(`Caused by: ${cause.stack ?? `${cause.name}: ${cause.message}`}`);
+      lines.push(
+        `Caused by: ${cause.stack ?? `${cause.name}: ${cause.message}`}`,
+      );
       cause = cause.cause;
     } else {
       lines.push(`Caused by: ${String(cause)}`);

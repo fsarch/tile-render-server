@@ -7,7 +7,12 @@ import { TilesController } from "./tiles.controller.js";
 import { TilesService } from "./tiles.service.js";
 
 @Module({
-  imports: [LabelAnchorModule, DatasetVersionModule, TemplateModule, StorageModule],
+  imports: [
+    LabelAnchorModule,
+    DatasetVersionModule,
+    TemplateModule,
+    StorageModule,
+  ],
   controllers: [TilesController],
   providers: [TilesService],
   exports: [TilesService],

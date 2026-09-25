@@ -34,7 +34,7 @@ export class ZoomRestrictedStorageProvider implements IStorageProvider {
   constructor(
     private readonly inner: IStorageProvider,
     private readonly minZoom?: number,
-    private readonly maxZoom?: number
+    private readonly maxZoom?: number,
   ) {}
 
   private isInRange(path: string): boolean {
@@ -47,7 +47,9 @@ export class ZoomRestrictedStorageProvider implements IStorageProvider {
 
   async readFile(path: string): Promise<Buffer> {
     if (!this.isInRange(path)) {
-      throw new Error(`${path} is outside this cache layer's configured zoom range`);
+      throw new Error(
+        `${path} is outside this cache layer's configured zoom range`,
+      );
     }
     return this.inner.readFile(path);
   }
@@ -57,9 +59,15 @@ export class ZoomRestrictedStorageProvider implements IStorageProvider {
     await this.inner.writeFile(path, data);
   }
 
-  async readRange(path: string, offset: number, length: number): Promise<Buffer> {
+  async readRange(
+    path: string,
+    offset: number,
+    length: number,
+  ): Promise<Buffer> {
     if (!this.isInRange(path)) {
-      throw new Error(`${path} is outside this cache layer's configured zoom range`);
+      throw new Error(
+        `${path} is outside this cache layer's configured zoom range`,
+      );
     }
     return this.inner.readRange(path, offset, length);
   }

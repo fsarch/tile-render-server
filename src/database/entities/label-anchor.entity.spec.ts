@@ -5,7 +5,9 @@ import { LabelAnchor } from "./label-anchor.entity.js";
 
 describe("LabelAnchor entity", () => {
   it("maps to the label_anchors table", () => {
-    const table = getMetadataArgsStorage().tables.find((t) => t.target === LabelAnchor);
+    const table = getMetadataArgsStorage().tables.find(
+      (t) => t.target === LabelAnchor,
+    );
     expect(table?.name).toBe("label_anchors");
   });
 
@@ -14,7 +16,9 @@ describe("LabelAnchor entity", () => {
       .columns.filter((c) => c.target === LabelAnchor && c.options.primary)
       .map((c) => c.propertyName)
       .sort();
-    expect(primaryColumns).toEqual(["datasetVersion", "featureId", "sourceLayer"].sort());
+    expect(primaryColumns).toEqual(
+      ["datasetVersion", "featureId", "sourceLayer"].sort(),
+    );
   });
 
   it("has fx/fy columns for the world-normalized anchor position", () => {
@@ -22,7 +26,13 @@ describe("LabelAnchor entity", () => {
       .columns.filter((c) => c.target === LabelAnchor)
       .map((c) => c.propertyName);
     expect(columnNames).toEqual(
-      expect.arrayContaining(["fx", "fy", "resolvedZoom", "creationTime", "updateTime"])
+      expect.arrayContaining([
+        "fx",
+        "fy",
+        "resolvedZoom",
+        "creationTime",
+        "updateTime",
+      ]),
     );
   });
 });

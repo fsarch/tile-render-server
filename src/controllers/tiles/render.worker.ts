@@ -1,9 +1,17 @@
 import { parentPort, workerData } from "node:worker_threads";
-import type { GlobalAreaAnchor, LabelAnchorCache, LabelAnchorKey } from "../../core/label-anchor-cache.js";
+import type {
+  GlobalAreaAnchor,
+  LabelAnchorCache,
+  LabelAnchorKey,
+} from "../../core/label-anchor-cache.js";
 import { openPMTilesArchiveFromStorage } from "../../core/pmtiles.js";
 import { renderTileToSvg } from "../../core/renderer.js";
 import { StorageProviderFactory } from "../../storage/storage-provider.factory.js";
-import type { FromWorkerMessage, RenderWorkerConfig, ToWorkerMessage } from "./render-worker-protocol.js";
+import type {
+  FromWorkerMessage,
+  RenderWorkerConfig,
+  ToWorkerMessage,
+} from "./render-worker-protocol.js";
 
 // worker_threads entrypoint for RenderWorkerPool (src/controllers/tiles/
 // render-worker-pool.ts) - see there for the overall design. Unlike src/cli/worker.ts
@@ -27,7 +35,10 @@ const storage = StorageProviderFactory.create(config.storageConfig);
 const archive = await openPMTilesArchiveFromStorage(storage, config.inputPath);
 
 let nextRequestId = 1;
-const pendingAnchorRequests = new Map<number, (value: GlobalAreaAnchor | null | undefined) => void>();
+const pendingAnchorRequests = new Map<
+  number,
+  (value: GlobalAreaAnchor | null | undefined) => void
+>();
 
 // Proxies the Postgres-backed label-anchor cache back to the main thread, which owns
 // the real DB connection (a worker thread has no NestJS DI container to inject
@@ -38,14 +49,23 @@ const remoteLabelAnchorCache: LabelAnchorCache = {
     return new Promise((resolve) => {
       const requestId = nextRequestId++;
       pendingAnchorRequests.set(requestId, resolve);
-      port.postMessage({ type: "anchor-get", requestId, key } satisfies FromWorkerMessage);
+      port.postMessage({
+        type: "anchor-get",
+        requestId,
+        key,
+      } satisfies FromWorkerMessage);
     });
   },
   async set(key: LabelAnchorKey, value: GlobalAreaAnchor | null) {
     await new Promise<void>((resolve) => {
       const requestId = nextRequestId++;
       pendingAnchorRequests.set(requestId, () => resolve());
-      port.postMessage({ type: "anchor-set", requestId, key, value } satisfies FromWorkerMessage);
+      port.postMessage({
+        type: "anchor-set",
+        requestId,
+        key,
+        value,
+      } satisfies FromWorkerMessage);
     });
   },
 };
@@ -69,8 +89,18 @@ port.on("message", async (message: ToWorkerMessage) => {
   const { jobId, tileBuffer, options } = message;
   const startedAt = performance.now();
   try {
-    const svg = await renderTileToSvg(tileBuffer, options, archive, remoteLabelAnchorCache);
-    port.postMessage({ type: "result", jobId, svg, renderMs: performance.now() - startedAt } satisfies FromWorkerMessage);
+    const svg = await renderTileToSvg(
+      tileBuffer,
+      options,
+      archive,
+      remoteLabelAnchorCache,
+    );
+    port.postMessage({
+      type: "result",
+      jobId,
+      svg,
+      renderMs: performance.now() - startedAt,
+    } satisfies FromWorkerMessage);
   } catch (error) {
     port.postMessage({
       type: "error",

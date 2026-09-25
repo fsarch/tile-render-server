@@ -1,5 +1,12 @@
-import { open, type FileHandle } from "node:fs/promises";
-import { PMTiles, tileIdToZxy, type Entry, type Header, type RangeResponse, type Source } from "pmtiles";
+import { type FileHandle, open } from "node:fs/promises";
+import {
+  type Entry,
+  type Header,
+  PMTiles,
+  type RangeResponse,
+  type Source,
+  tileIdToZxy,
+} from "pmtiles";
 import type { IStorageProvider } from "../storage/storage-provider.interface.js";
 
 export interface TileCoord {
@@ -11,7 +18,7 @@ export interface TileCoord {
 class NodeFileSource implements Source {
   constructor(
     private readonly filePath: string,
-    private readonly handle: FileHandle
+    private readonly handle: FileHandle,
   ) {}
 
   getKey(): string {
@@ -23,12 +30,15 @@ class NodeFileSource implements Source {
     const { bytesRead } = await this.handle.read(buffer, 0, length, offset);
     if (bytesRead !== length) {
       throw new Error(
-        `Short read while reading PMTiles (${bytesRead}/${length} bytes at offset ${offset})`
+        `Short read while reading PMTiles (${bytesRead}/${length} bytes at offset ${offset})`,
       );
     }
     const output = new Uint8Array(buffer.subarray(0, bytesRead));
     return {
-      data: output.buffer.slice(output.byteOffset, output.byteOffset + output.byteLength),
+      data: output.buffer.slice(
+        output.byteOffset,
+        output.byteOffset + output.byteLength,
+      ),
     };
   }
 }
@@ -41,7 +51,7 @@ class NodeFileSource implements Source {
 export class StorageSource implements Source {
   constructor(
     private readonly storage: IStorageProvider,
-    private readonly key: string
+    private readonly key: string,
   ) {}
 
   getKey(): string {
@@ -60,7 +70,7 @@ async function* iterateRunEntries(
   archive: PMTiles,
   header: Header,
   directoryOffset: number,
-  directoryLength: number
+  directoryLength: number,
 ): AsyncGenerator<Entry> {
   const stack = [{ offset: directoryOffset, length: directoryLength }];
   while (stack.length > 0) {
@@ -70,7 +80,7 @@ async function* iterateRunEntries(
       archive.source,
       current.offset,
       current.length,
-      header
+      header,
     );
 
     for (const entry of entries) {
@@ -94,7 +104,7 @@ export class LocalPMTilesArchive {
   constructor(
     private readonly close_: () => Promise<void>,
     private readonly archive: PMTiles,
-    private readonly header: Header
+    private readonly header: Header,
   ) {}
 
   getHeader(): Header {
@@ -105,7 +115,11 @@ export class LocalPMTilesArchive {
     return this.archive.getMetadata();
   }
 
-  async getTile(z: number, x: number, y: number): Promise<ArrayBuffer | undefined> {
+  async getTile(
+    z: number,
+    x: number,
+    y: number,
+  ): Promise<ArrayBuffer | undefined> {
     const response = await this.archive.getZxy(z, x, y);
     return response?.data;
   }
@@ -117,7 +131,7 @@ export class LocalPMTilesArchive {
       this.archive,
       this.header,
       this.header.rootDirectoryOffset,
-      this.header.rootDirectoryLength
+      this.header.rootDirectoryLength,
     )) {
       for (let i = 0; i < entry.runLength; i += 1) {
         const [z] = tileIdToZxy(entry.tileId + i);
@@ -133,7 +147,7 @@ export class LocalPMTilesArchive {
       this.archive,
       this.header,
       this.header.rootDirectoryOffset,
-      this.header.rootDirectoryLength
+      this.header.rootDirectoryLength,
     )) {
       for (let i = 0; i < entry.runLength; i += 1) {
         const [z, x, y] = tileIdToZxy(entry.tileId + i);
@@ -151,7 +165,7 @@ export class LocalPMTilesArchive {
 
 async function openPMTilesArchiveFromSource(
   source: Source,
-  close: () => Promise<void>
+  close: () => Promise<void>,
 ): Promise<LocalPMTilesArchive> {
   const archive = new PMTiles(source);
   const header = await archive.getHeader();
@@ -161,7 +175,9 @@ async function openPMTilesArchiveFromSource(
 // Batch CLI only (src/cli/index.ts, src/cli/worker.ts) - always a local filesystem
 // path, independent of storage.data/config.yaml (the CLI never touches Postgres or the
 // REST API's config, see CLAUDE.md).
-export async function openPMTilesArchive(filePath: string): Promise<LocalPMTilesArchive> {
+export async function openPMTilesArchive(
+  filePath: string,
+): Promise<LocalPMTilesArchive> {
   const fileHandle = await open(filePath, "r");
   const source = new NodeFileSource(filePath, fileHandle);
   return openPMTilesArchiveFromSource(source, () => fileHandle.close());
@@ -172,7 +188,7 @@ export async function openPMTilesArchive(filePath: string): Promise<LocalPMTiles
 // bucket/prefix depending on storage.data in config.yaml.
 export async function openPMTilesArchiveFromStorage(
   storage: IStorageProvider,
-  key: string
+  key: string,
 ): Promise<LocalPMTilesArchive> {
   const source = new StorageSource(storage, key);
   return openPMTilesArchiveFromSource(source, () => Promise.resolve());

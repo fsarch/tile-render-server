@@ -57,7 +57,12 @@ type ZoomRange = {
 
 // One storage.cache layer: any filesystem/S3/memory config, optionally scoped to a
 // zoom range.
-export type CacheLayerConfig = (StorageConfigFilesystem | StorageConfigS3 | StorageConfigMemory) & ZoomRange;
+export type CacheLayerConfig = (
+  | StorageConfigFilesystem
+  | StorageConfigS3
+  | StorageConfigMemory
+) &
+  ZoomRange;
 
 // storage.cache only (see StorageProviderFactory.createCache): a bare string (always
 // unscoped - use the object form for zoom scoping), a single scoped/unscoped layer, or
@@ -66,4 +71,7 @@ export type CacheLayerConfig = (StorageConfigFilesystem | StorageConfigS3 | Stor
 // layer's own zoom range covers it too); writes go to every layer whose zoom range
 // covers the request. Typically `[memory, filesystem-or-s3]` - "look in the memory
 // cache first, and if it's not there, check the next cache layer".
-export type CacheStorageConfig = string | CacheLayerConfig | CacheStorageConfig[];
+export type CacheStorageConfig =
+  | string
+  | CacheLayerConfig
+  | CacheStorageConfig[];

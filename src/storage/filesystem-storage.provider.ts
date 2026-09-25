@@ -1,7 +1,7 @@
-import { Injectable } from "@nestjs/common";
 import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import { join } from "node:path";
+import { Injectable } from "@nestjs/common";
 import type { IStorageProvider } from "./storage-provider.interface.js";
 
 @Injectable()
@@ -20,7 +20,11 @@ export class FileSystemStorageProvider implements IStorageProvider {
     await fs.writeFile(this.resolve(path), data);
   }
 
-  async readRange(path: string, offset: number, length: number): Promise<Buffer> {
+  async readRange(
+    path: string,
+    offset: number,
+    length: number,
+  ): Promise<Buffer> {
     const handle = await fs.open(this.resolve(path), "r");
     try {
       const buffer = Buffer.alloc(length);

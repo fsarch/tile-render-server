@@ -1,5 +1,9 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile, stat } from "node:fs/promises";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import { extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import minimist from "minimist";
@@ -87,7 +91,11 @@ async function sendFile(res: ServerResponse, path: string): Promise<void> {
   res.end(body);
 }
 
-async function proxyApi(res: ServerResponse, apiBaseUrl: string, path: string): Promise<void> {
+async function proxyApi(
+  res: ServerResponse,
+  apiBaseUrl: string,
+  path: string,
+): Promise<void> {
   const upstream = await fetch(`${apiBaseUrl}${path}`);
   const body = Buffer.from(await upstream.arrayBuffer());
   res.statusCode = upstream.status;
@@ -115,60 +123,62 @@ const projectRoot = resolve(srcDir, "..", "..");
 // straight from there - even when this file itself is running as compiled dist/ JS.
 const exampleDir = resolve(projectRoot, "src", "example", "public");
 
-const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-  try {
-    const rawUrl = req.url ?? "/";
-    const pathOnly = rawUrl.split("?")[0] ?? "/";
-    const decodedPath = decodeURIComponent(pathOnly);
+const server = createServer(
+  async (req: IncomingMessage, res: ServerResponse) => {
+    try {
+      const rawUrl = req.url ?? "/";
+      const pathOnly = rawUrl.split("?")[0] ?? "/";
+      const decodedPath = decodeURIComponent(pathOnly);
 
-    if (decodedPath === "/" || decodedPath === "/index.html") {
-      await sendFile(res, resolve(exampleDir, "index.html"));
-      return;
-    }
-
-    if (decodedPath === "/style.css" || decodedPath === "/app.js") {
-      const filePath = resolve(exampleDir, decodedPath.slice(1));
-      if (!isInside(exampleDir, filePath)) {
-        notFound(res);
+      if (decodedPath === "/" || decodedPath === "/index.html") {
+        await sendFile(res, resolve(exampleDir, "index.html"));
         return;
       }
-      await sendFile(res, filePath);
-      return;
-    }
 
-    if (decodedPath.startsWith("/tiles/")) {
-      const tileRelative = decodedPath.replace(/^\/tiles\//, "");
-      const tilePath = resolve(options.outputDir, tileRelative);
-      if (!isInside(options.outputDir, tilePath)) {
-        notFound(res);
+      if (decodedPath === "/style.css" || decodedPath === "/app.js") {
+        const filePath = resolve(exampleDir, decodedPath.slice(1));
+        if (!isInside(exampleDir, filePath)) {
+          notFound(res);
+          return;
+        }
+        await sendFile(res, filePath);
         return;
       }
-      await sendFile(res, tilePath);
-      return;
-    }
 
-    if (decodedPath.startsWith("/v1/")) {
-      // Proxies any v1 API route, not just tile rendering - the light/dark toggle also
-      // needs GET /v1/templates (see app.js) to look up template ids by name.
-      await proxyApi(res, options.apiBaseUrl, decodedPath);
-      return;
-    }
+      if (decodedPath.startsWith("/tiles/")) {
+        const tileRelative = decodedPath.replace(/^\/tiles\//, "");
+        const tilePath = resolve(options.outputDir, tileRelative);
+        if (!isInside(options.outputDir, tilePath)) {
+          notFound(res);
+          return;
+        }
+        await sendFile(res, tilePath);
+        return;
+      }
 
-    notFound(res);
-  } catch (error) {
-    const maybeError = error as NodeErrorWithCode;
-    if (maybeError && maybeError.code === "ENOENT") {
+      if (decodedPath.startsWith("/v1/")) {
+        // Proxies any v1 API route, not just tile rendering - the light/dark toggle also
+        // needs GET /v1/templates (see app.js) to look up template ids by name.
+        await proxyApi(res, options.apiBaseUrl, decodedPath);
+        return;
+      }
+
       notFound(res);
-      return;
+    } catch (error) {
+      const maybeError = error as NodeErrorWithCode;
+      if (maybeError && maybeError.code === "ENOENT") {
+        notFound(res);
+        return;
+      }
+      res.statusCode = 500;
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.end(error instanceof Error ? error.message : "Internal server error");
     }
-    res.statusCode = 500;
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.end(error instanceof Error ? error.message : "Internal server error");
-  }
-});
+  },
+);
 
 server.listen(options.port, options.host, () => {
   console.log(
-    `Example server running at http://${options.host}:${options.port} (api ${options.apiBaseUrl})`
+    `Example server running at http://${options.host}:${options.port} (api ${options.apiBaseUrl})`,
   );
 });

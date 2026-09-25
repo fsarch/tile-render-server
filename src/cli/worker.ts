@@ -53,13 +53,27 @@ port.on("message", async (job: JobMessage) => {
   const { z, x, y, outputPath, overwrite } = job;
   try {
     if (!overwrite && (await exists(outputPath))) {
-      port.postMessage({ type: "result", status: "skipped", z, x, y, reason: "exists" });
+      port.postMessage({
+        type: "result",
+        status: "skipped",
+        z,
+        x,
+        y,
+        reason: "exists",
+      });
       return;
     }
 
     const tileData = await archive.getTile(z, x, y);
     if (!tileData || tileData.byteLength === 0) {
-      port.postMessage({ type: "result", status: "skipped", z, x, y, reason: "empty" });
+      port.postMessage({
+        type: "result",
+        status: "skipped",
+        z,
+        x,
+        y,
+        reason: "empty",
+      });
       return;
     }
 
@@ -73,10 +87,17 @@ port.on("message", async (job: JobMessage) => {
         tileX: x,
         tileY: y,
       },
-      archive
+      archive,
     );
     if (!svg) {
-      port.postMessage({ type: "result", status: "skipped", z, x, y, reason: "invalid" });
+      port.postMessage({
+        type: "result",
+        status: "skipped",
+        z,
+        x,
+        y,
+        reason: "invalid",
+      });
       return;
     }
 

@@ -13,7 +13,9 @@ describe("MemoryStorageProvider", () => {
 
   it("readFile throws when the path isn't present", async () => {
     const provider = new MemoryStorageProvider();
-    await expect(provider.readFile("missing.svg")).rejects.toThrow(/not found/i);
+    await expect(provider.readFile("missing.svg")).rejects.toThrow(
+      /not found/i,
+    );
   });
 
   it("exists reflects presence without throwing", async () => {
@@ -25,7 +27,9 @@ describe("MemoryStorageProvider", () => {
     const provider = new MemoryStorageProvider();
     await provider.writeFile("data.bin", Buffer.from("0123456789"));
 
-    expect(await provider.readRange("data.bin", 2, 4)).toEqual(Buffer.from("2345"));
+    expect(await provider.readRange("data.bin", 2, 4)).toEqual(
+      Buffer.from("2345"),
+    );
   });
 
   it("deleteFile removes the entry", async () => {
@@ -38,7 +42,9 @@ describe("MemoryStorageProvider", () => {
   });
 
   it("mkdir is a no-op", async () => {
-    await expect(new MemoryStorageProvider().mkdir("some/dir")).resolves.toBeUndefined();
+    await expect(
+      new MemoryStorageProvider().mkdir("some/dir"),
+    ).resolves.toBeUndefined();
   });
 
   it("evicts the least-recently-used entry once maxItems is exceeded", async () => {

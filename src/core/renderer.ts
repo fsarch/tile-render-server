@@ -6,16 +6,16 @@ import {
   getLabelAnchor,
   getLineLength,
   getPolygonArea,
-  simplifyLine,
   type LineStringGeometry,
   type NormalizedGeometry,
   type OverzoomTransform,
   type Point2D,
   type PolygonGeometry,
+  simplifyLine,
 } from "./geometry.js";
 import {
-  InMemoryLabelAnchorCache,
   type GlobalAreaAnchor,
+  InMemoryLabelAnchorCache,
   type LabelAnchorCache,
   type LabelAnchorKey,
 } from "./label-anchor-cache.js";
@@ -63,7 +63,11 @@ export interface RenderOptions {
 // area (e.g. a nature reserve split into many disjoint polygons across many tiles).
 // Both LocalPMTilesArchive and TilesService's TileArchive satisfy this structurally.
 export interface TileSource {
-  getTile(z: number, x: number, y: number): Promise<ArrayBuffer | Uint8Array | undefined>;
+  getTile(
+    z: number,
+    x: number,
+    y: number,
+  ): Promise<ArrayBuffer | Uint8Array | undefined>;
 }
 
 type FeatureProps = Record<string, unknown>;
@@ -110,7 +114,10 @@ function getFeatureLabel(properties: FeatureProps = {}): string | null {
 
 // Motorways/trunk roads are identified by their route number in normal map use
 // (e.g. "A 40"), not by a historical or colloquial name (e.g. "Ruhrschnellweg").
-function getRoadLabelText(properties: FeatureProps, roadClass: string): string | null {
+function getRoadLabelText(
+  properties: FeatureProps,
+  roadClass: string,
+): string | null {
   if (roadClass === "motorway" || roadClass === "trunk") {
     const ref = properties.ref;
     if (typeof ref === "string" && ref.trim().length > 0) {
@@ -120,15 +127,27 @@ function getRoadLabelText(properties: FeatureProps, roadClass: string): string |
   return getFeatureLabel(properties);
 }
 
-function getFeatureDataId(feature: { id?: unknown; properties?: Record<string, unknown> }): string | undefined {
+function getFeatureDataId(feature: {
+  id?: unknown;
+  properties?: Record<string, unknown>;
+}): string | undefined {
   if (feature.id !== undefined && feature.id !== null) {
     return String(feature.id);
   }
 
   const properties = feature.properties ?? {};
-  const candidates = [properties.id, properties["@id"], properties.osm_id, properties.osmId];
+  const candidates = [
+    properties.id,
+    properties["@id"],
+    properties.osm_id,
+    properties.osmId,
+  ];
   for (const candidate of candidates) {
-    if (candidate !== undefined && candidate !== null && String(candidate).trim().length > 0) {
+    if (
+      candidate !== undefined &&
+      candidate !== null &&
+      String(candidate).trim().length > 0
+    ) {
       return String(candidate);
     }
   }
@@ -147,13 +166,19 @@ function buildFeatureRenderAttributes(feature: {
   if (dataId) {
     attributes["data-id"] = dataId;
   }
-  if (protectClass !== undefined && protectClass !== null && String(protectClass).trim().length > 0) {
+  if (
+    protectClass !== undefined &&
+    protectClass !== null &&
+    String(protectClass).trim().length > 0
+  ) {
     attributes["data-protect-class"] = String(protectClass);
   }
   return attributes;
 }
 
-function pickLongestLine(lines: LineStringGeometry["lines"]): LineStringGeometry["lines"][number] {
+function pickLongestLine(
+  lines: LineStringGeometry["lines"],
+): LineStringGeometry["lines"][number] {
   let best: LineStringGeometry["lines"][number] = [];
   let bestLength = 0;
   for (const line of lines) {
@@ -173,7 +198,9 @@ function pickLongestLine(lines: LineStringGeometry["lines"]): LineStringGeometry
 // without touching the actual rendered geometry of the feature.
 const LABEL_LINE_SIMPLIFY_TOLERANCE = 6;
 
-function simplifyLineForLabel(line: LineStringGeometry["lines"][number]): LineStringGeometry["lines"][number] {
+function simplifyLineForLabel(
+  line: LineStringGeometry["lines"][number],
+): LineStringGeometry["lines"][number] {
   return simplifyLine(line, LABEL_LINE_SIMPLIFY_TOLERANCE);
 }
 
@@ -188,10 +215,17 @@ const ROAD_LABEL_MIN_ZOOM: Partial<Record<string, number>> = {
   tertiary: 13,
 };
 
-function shouldRenderRoadLabelByZoom(roadClass: string, zoom?: number, datasetMaxZoom?: number): boolean {
+function shouldRenderRoadLabelByZoom(
+  roadClass: string,
+  zoom?: number,
+  datasetMaxZoom?: number,
+): boolean {
   if (roadClass === "rail") return false;
   const minZoom = ROAD_LABEL_MIN_ZOOM[roadClass];
-  if (minZoom !== undefined && (!Number.isInteger(zoom) || (zoom ?? 0) < minZoom)) {
+  if (
+    minZoom !== undefined &&
+    (!Number.isInteger(zoom) || (zoom ?? 0) < minZoom)
+  ) {
     return false;
   }
   if (!Number.isInteger(zoom) || (zoom ?? 0) < 13) return true;
@@ -200,7 +234,10 @@ function shouldRenderRoadLabelByZoom(roadClass: string, zoom?: number, datasetMa
   // but there IS a lot more space per tile. The "high-priority roads only" clutter
   // guard below is calibrated for the dataset's own real, detailed zoom levels; it
   // doesn't apply once overzoom is doing the "zooming in" instead of real detail.
-  if (Number.isInteger(datasetMaxZoom) && (zoom as number) > (datasetMaxZoom as number)) {
+  if (
+    Number.isInteger(datasetMaxZoom) &&
+    (zoom as number) > (datasetMaxZoom as number)
+  ) {
     return true;
   }
   return (
@@ -214,7 +251,7 @@ function shouldRenderRoadLabelByZoom(roadClass: string, zoom?: number, datasetMa
 function shouldRenderWaterLabel(
   properties: FeatureProps,
   geometry: NormalizedGeometry,
-  zoom?: number
+  zoom?: number,
 ): boolean {
   if (!Number.isInteger(zoom) || (zoom ?? 0) < 6) return false;
   const waterClass = String(properties.class ?? "").toLowerCase();
@@ -251,7 +288,10 @@ function shouldRenderWaterLabel(
   return true;
 }
 
-function shouldRenderNatureAreaLabel(geometry: NormalizedGeometry, zoom?: number): boolean {
+function shouldRenderNatureAreaLabel(
+  geometry: NormalizedGeometry,
+  zoom?: number,
+): boolean {
   if (!Number.isInteger(zoom) || (zoom ?? 0) < 12) return false;
   if (geometry.kind === "Polygon") {
     return getPolygonArea(geometry.rings) >= 120;
@@ -279,7 +319,10 @@ function shouldSuppressNatureLabel(properties: FeatureProps): boolean {
   // Requirement 11.5: generic protected_area features must only get a label when
   // they can actually be identified as nature-related (protect_class or object/title
   // tags). Otherwise this catches unrelated administrative "protected_area" polygons.
-  if (tokens.includes("protected_area") && !isNatureRelatedProtectedArea(properties)) {
+  if (
+    tokens.includes("protected_area") &&
+    !isNatureRelatedProtectedArea(properties)
+  ) {
     return true;
   }
   return false;
@@ -292,7 +335,11 @@ function getClassificationTokens(properties: FeatureProps): string[] {
     properties.kind,
     properties.type,
   ]
-    .map((value) => String(value ?? "").trim().toLowerCase())
+    .map((value) =>
+      String(value ?? "")
+        .trim()
+        .toLowerCase(),
+    )
     .filter((value) => value.length > 0);
 }
 
@@ -302,9 +349,15 @@ function isNatureRelatedProtectedArea(properties: FeatureProps): boolean {
     return false;
   }
 
-  const protectClass = getNumericStyleValue(properties.protect_class, Number.NaN);
+  const protectClass = getNumericStyleValue(
+    properties.protect_class,
+    Number.NaN,
+  );
   if (Number.isFinite(protectClass)) {
-    if ((protectClass >= 1 && protectClass <= 7) || (protectClass >= 97 && protectClass <= 99)) {
+    if (
+      (protectClass >= 1 && protectClass <= 7) ||
+      (protectClass >= 97 && protectClass <= 99)
+    ) {
       return true;
     }
     return false;
@@ -317,7 +370,11 @@ function isNatureRelatedProtectedArea(properties: FeatureProps): boolean {
     properties.natural,
     properties.landuse,
   ]
-    .map((value) => String(value ?? "").trim().toLowerCase())
+    .map((value) =>
+      String(value ?? "")
+        .trim()
+        .toLowerCase(),
+    )
     .filter((value) => value.length > 0)
     .join(" ");
 
@@ -341,13 +398,16 @@ function isNatureRelatedProtectedArea(properties: FeatureProps): boolean {
 function isNatureReserve(properties: FeatureProps): boolean {
   const tokens = getClassificationTokens(properties);
 
-  return tokens.includes("naturschutzgebiet") || isNatureRelatedProtectedArea(properties);
+  return (
+    tokens.includes("naturschutzgebiet") ||
+    isNatureRelatedProtectedArea(properties)
+  );
 }
 
 function getNatureLabelStyle(
   baseStyle: SvgStyle | null,
   properties: FeatureProps,
-  theme: "water" | "nature"
+  theme: "water" | "nature",
 ): SvgStyle | null {
   if (!baseStyle) return null;
   if (theme === "nature" && isNatureReserve(properties)) {
@@ -356,7 +416,12 @@ function getNatureLabelStyle(
       ...baseStyle,
       fill: "#2f7d32",
       "font-size": Number(Math.max(8.5, baseFontSize - 1.5).toFixed(1)),
-      "stroke-width": Number(Math.max(1.6, getNumericStyleValue(baseStyle["stroke-width"], 2.2) - 0.4).toFixed(1)),
+      "stroke-width": Number(
+        Math.max(
+          1.6,
+          getNumericStyleValue(baseStyle["stroke-width"], 2.2) - 0.4,
+        ).toFixed(1),
+      ),
     };
   }
   return baseStyle;
@@ -396,9 +461,14 @@ function estimateTextWidth(text: string, fontSize: number): number {
 function buildAnchoredLabelBounds(
   anchor: { x: number; y: number } | null,
   labelText: string,
-  textStyle: SvgStyle | null
+  textStyle: SvgStyle | null,
 ): LabelBounds | null {
-  if (!anchor || !Number.isFinite(anchor.x) || !Number.isFinite(anchor.y) || !textStyle) {
+  if (
+    !anchor ||
+    !Number.isFinite(anchor.x) ||
+    !Number.isFinite(anchor.y) ||
+    !textStyle
+  ) {
     return null;
   }
 
@@ -446,7 +516,7 @@ function buildAnchoredLabelBounds(
 function boundsOfLineWindow(
   line: Point2D[],
   startDist: number,
-  endDist: number
+  endDist: number,
 ): { minX: number; maxX: number; minY: number; maxY: number } | null {
   let minX = Infinity;
   let maxX = -Infinity;
@@ -497,7 +567,7 @@ function buildLineLabelBounds(
   // text by design (the rest lives in the neighbor's own render of the same combined
   // line) - so the usual "must be ~90% visible" guard against accidental truncation
   // does not apply; any non-zero visible sliver is intentional here, not a bug.
-  requireHighVisibility = true
+  requireHighVisibility = true,
 ): LabelBounds | null {
   if (!Array.isArray(line) || line.length < 2 || !textStyle) return null;
 
@@ -515,7 +585,10 @@ function buildLineLabelBounds(
 
   const minY = window.minY - estimatedHeight / 2;
   const maxY = window.maxY + estimatedHeight / 2;
-  const visibleWidth = Math.max(0, Math.min(window.maxX, 256) - Math.max(window.minX, 0));
+  const visibleWidth = Math.max(
+    0,
+    Math.min(window.maxX, 256) - Math.max(window.minX, 0),
+  );
   const visibleHeight = Math.max(0, Math.min(maxY, 256) - Math.max(minY, 0));
   const visibleArea = visibleWidth * visibleHeight;
   if (visibleArea <= 0) return null;
@@ -545,7 +618,7 @@ function buildLineLabelBounds(
 function shouldRenderAnchoredLabelInTile(
   anchor: { x: number; y: number } | null,
   labelText: string,
-  textStyle: SvgStyle | null
+  textStyle: SvgStyle | null,
 ): boolean {
   return buildAnchoredLabelBounds(anchor, labelText, textStyle) !== null;
 }
@@ -564,7 +637,7 @@ function doLabelBoundsOverlap(a: LabelBounds, b: LabelBounds): boolean {
 
 function pushBestNatureLabels(
   candidates: NatureLabelCandidate[],
-  labelFragments: string[]
+  labelFragments: string[],
 ): void {
   const bestByKey = new Map<string, NatureLabelCandidate>();
   for (const candidate of candidates) {
@@ -576,13 +649,19 @@ function pushBestNatureLabels(
 
   const selected: NatureLabelCandidate[] = [];
   const usedTextKeys = new Set<string>();
-  for (const candidate of [...bestByKey.values()].sort((a, b) => b.score - a.score)) {
+  for (const candidate of [...bestByKey.values()].sort(
+    (a, b) => b.score - a.score,
+  )) {
     // A single named area (e.g. a nature reserve split into several disjoint OSM
     // multipolygon pieces) must not produce more than one label per tile.
     if (usedTextKeys.has(candidate.textKey)) {
       continue;
     }
-    if (selected.some((existing) => doLabelBoundsOverlap(existing.bounds, candidate.bounds))) {
+    if (
+      selected.some((existing) =>
+        doLabelBoundsOverlap(existing.bounds, candidate.bounds),
+      )
+    ) {
       continue;
     }
     selected.push(candidate);
@@ -597,7 +676,7 @@ function pushBestNatureLabels(
 function shouldSuppressSmallNatureReserveLabel(
   properties: FeatureProps,
   geometry: NormalizedGeometry,
-  bounds: LabelBounds
+  bounds: LabelBounds,
 ): boolean {
   if (!isNatureReserve(properties) || geometry.kind !== "Polygon") {
     return false;
@@ -608,7 +687,10 @@ function shouldSuppressSmallNatureReserveLabel(
   return visiblePolygonArea < minimumAreaForLabel;
 }
 
-function buildLabelTextKey(theme: "water" | "nature", labelText: string): string {
+function buildLabelTextKey(
+  theme: "water" | "nature",
+  labelText: string,
+): string {
   return `${theme}|${normalizeLabelText(labelText)}`;
 }
 
@@ -690,7 +772,8 @@ function featureLocalBounds(geometry: NormalizedGeometry): PixelBounds | null {
   if (geometry.kind === "Polygon") return polygonPixelBounds(geometry);
   if (geometry.kind === "Point") {
     const point = geometry.points[0];
-    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y))
+      return null;
     return { minX: point.x, maxX: point.x, minY: point.y, maxY: point.y };
   }
   return null;
@@ -718,13 +801,17 @@ async function safeGetVectorTile(
   maxZoom: number,
   z: number,
   x: number,
-  y: number
+  y: number,
 ): Promise<FetchedTile | null> {
   const maxIndex = 2 ** z;
   if (z < 0 || x < 0 || y < 0 || x >= maxIndex || y >= maxIndex) return null;
   const transform = computeOverzoomTransform(z, x, y, maxZoom);
   try {
-    const data = await source.getTile(transform.sourceZoom, transform.sourceX, transform.sourceY);
+    const data = await source.getTile(
+      transform.sourceZoom,
+      transform.sourceX,
+      transform.sourceY,
+    );
     if (!data) return null;
     const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
     if (bytes.byteLength === 0) return null;
@@ -828,7 +915,7 @@ function findMatchingLineInTile(
   sourceLayerNames: string[],
   featureId: string,
   normalizedName: string,
-  transform?: OverzoomTransform
+  transform?: OverzoomTransform,
 ): Point2D[] | null {
   const matchById = !featureId.startsWith(SYNTHETIC_FEATURE_ID_PREFIX);
   for (const layerName of sourceLayerNames) {
@@ -876,9 +963,14 @@ async function extendLineAcrossTileEdges(
   zoom: number | undefined,
   tileX: number | undefined,
   tileY: number | undefined,
-  datasetMaxZoom?: number
+  datasetMaxZoom?: number,
 ): Promise<ExtendedLine> {
-  if (!source || !Number.isInteger(zoom) || !Number.isInteger(tileX) || !Number.isInteger(tileY)) {
+  if (
+    !source ||
+    !Number.isInteger(zoom) ||
+    !Number.isInteger(tileX) ||
+    !Number.isInteger(tileY)
+  ) {
     return { line: localLine, extended: false };
   }
   const bounds = linePixelBounds(localLine);
@@ -896,7 +988,7 @@ async function extendLineAcrossTileEdges(
       maxZoom,
       zoom as number,
       (tileX as number) + dx,
-      (tileY as number) + dy
+      (tileY as number) + dy,
     );
     if (!fetched) continue;
     const neighborLine = findMatchingLineInTile(
@@ -904,10 +996,13 @@ async function extendLineAcrossTileEdges(
       sourceLayerNames,
       featureId,
       normalizedName,
-      fetched.transform
+      fetched.transform,
     );
     if (!neighborLine) continue;
-    const translated = neighborLine.map((point) => ({ x: point.x + dx * 256, y: point.y + dy * 256 }));
+    const translated = neighborLine.map((point) => ({
+      x: point.x + dx * 256,
+      y: point.y + dy * 256,
+    }));
     const joined = joinLines(extendedLine, translated);
     if (joined !== extendedLine) {
       extendedLine = joined;
@@ -920,7 +1015,7 @@ async function extendLineAcrossTileEdges(
 function findMatchingParkFeatureBoundsById(
   tile: VectorTile,
   featureId: string,
-  transform?: OverzoomTransform
+  transform?: OverzoomTransform,
 ): FeatureBoundsMatch[] {
   const layer = tile.layers.park;
   if (!layer) return [];
@@ -942,7 +1037,7 @@ function findMatchingParkFeatureBoundsById(
 function findMatchingParkFeatureBoundsByName(
   tile: VectorTile,
   normalizedName: string,
-  transform?: OverzoomTransform
+  transform?: OverzoomTransform,
 ): FeatureBoundsMatch[] {
   const layer = tile.layers.park;
   if (!layer) return [];
@@ -977,7 +1072,7 @@ function findMatchingParkFeatureBounds(
   featureId: string,
   normalizedName: string,
   allowNameFallbackForThisTile: boolean,
-  transform?: OverzoomTransform
+  transform?: OverzoomTransform,
 ): FeatureBoundsMatch[] {
   if (featureId.startsWith(SYNTHETIC_FEATURE_ID_PREFIX)) {
     return findMatchingParkFeatureBoundsByName(tile, normalizedName, transform);
@@ -998,17 +1093,38 @@ async function computeAreaGlobalAnchor(
   zoom: number,
   tileX: number,
   tileY: number,
-  maxZoom: number
+  maxZoom: number,
 ): Promise<GlobalAreaAnchor | null> {
-  let lastMatch: { zoom: number; x: number; y: number; bounds: PixelBounds } | null = null;
+  let lastMatch: {
+    zoom: number;
+    x: number;
+    y: number;
+    bounds: PixelBounds;
+  } | null = null;
 
-  for (let ancestorZoom = zoom; ancestorZoom >= MIN_AREA_ANCHOR_ZOOM; ancestorZoom -= 1) {
+  for (
+    let ancestorZoom = zoom;
+    ancestorZoom >= MIN_AREA_ANCHOR_ZOOM;
+    ancestorZoom -= 1
+  ) {
     const shift = zoom - ancestorZoom;
     const ax = tileX >> shift;
     const ay = tileY >> shift;
-    const fetched = await safeGetVectorTile(source, maxZoom, ancestorZoom, ax, ay);
+    const fetched = await safeGetVectorTile(
+      source,
+      maxZoom,
+      ancestorZoom,
+      ax,
+      ay,
+    );
     if (!fetched) break;
-    const matches = findMatchingParkFeatureBounds(fetched.tile, featureId, normalizedName, true, fetched.transform);
+    const matches = findMatchingParkFeatureBounds(
+      fetched.tile,
+      featureId,
+      normalizedName,
+      true,
+      fetched.transform,
+    );
     if (matches.length === 0) break;
     const bounds = unionFeatureBounds(matches);
     if (!bounds) break;
@@ -1021,7 +1137,10 @@ async function computeAreaGlobalAnchor(
       const centerX = (bounds.minX + bounds.maxX) / 2;
       const centerY = (bounds.minY + bounds.maxY) / 2;
       const scale = 256 * 2 ** ancestorZoom;
-      return { fx: (ax * 256 + centerX) / scale, fy: (ay * 256 + centerY) / scale };
+      return {
+        fx: (ax * 256 + centerX) / scale,
+        fy: (ay * 256 + centerY) / scale,
+      };
     }
   }
 
@@ -1038,17 +1157,37 @@ async function computeAreaGlobalAnchor(
 
   let combinedBounds = lastMatch?.bounds ?? null;
   if (!combinedBounds) {
-    const seedFetch = await safeGetVectorTile(source, maxZoom, scanZoom, seedX, seedY);
+    const seedFetch = await safeGetVectorTile(
+      source,
+      maxZoom,
+      scanZoom,
+      seedX,
+      seedY,
+    );
     combinedBounds = seedFetch
       ? unionFeatureBounds(
-          findMatchingParkFeatureBounds(seedFetch.tile, featureId, normalizedName, false, seedFetch.transform)
+          findMatchingParkFeatureBounds(
+            seedFetch.tile,
+            featureId,
+            normalizedName,
+            false,
+            seedFetch.transform,
+          ),
         )
       : null;
   }
-  let minGX = combinedBounds ? seedX * 256 + combinedBounds.minX : Number.POSITIVE_INFINITY;
-  let maxGX = combinedBounds ? seedX * 256 + combinedBounds.maxX : Number.NEGATIVE_INFINITY;
-  let minGY = combinedBounds ? seedY * 256 + combinedBounds.minY : Number.POSITIVE_INFINITY;
-  let maxGY = combinedBounds ? seedY * 256 + combinedBounds.maxY : Number.NEGATIVE_INFINITY;
+  let minGX = combinedBounds
+    ? seedX * 256 + combinedBounds.minX
+    : Number.POSITIVE_INFINITY;
+  let maxGX = combinedBounds
+    ? seedX * 256 + combinedBounds.maxX
+    : Number.NEGATIVE_INFINITY;
+  let minGY = combinedBounds
+    ? seedY * 256 + combinedBounds.minY
+    : Number.POSITIVE_INFINITY;
+  let maxGY = combinedBounds
+    ? seedY * 256 + combinedBounds.maxY
+    : Number.NEGATIVE_INFINITY;
   let foundAny = combinedBounds !== null;
 
   const directions: Array<[number, number]> = [
@@ -1065,7 +1204,13 @@ async function computeAreaGlobalAnchor(
       y += dy;
       const fetched = await safeGetVectorTile(source, maxZoom, scanZoom, x, y);
       if (!fetched) break;
-      const matches = findMatchingParkFeatureBounds(fetched.tile, featureId, normalizedName, false, fetched.transform);
+      const matches = findMatchingParkFeatureBounds(
+        fetched.tile,
+        featureId,
+        normalizedName,
+        false,
+        fetched.transform,
+      );
       if (matches.length === 0) break;
       const bounds = unionFeatureBounds(matches);
       if (!bounds) break;
@@ -1096,9 +1241,15 @@ function getAreaGlobalAnchor(
   tileX?: number,
   tileY?: number,
   labelAnchorCache: LabelAnchorCache = defaultLabelAnchorCache,
-  datasetMaxZoom?: number
+  datasetMaxZoom?: number,
 ): Promise<GlobalAreaAnchor | null> {
-  if (!source || theme !== "nature" || !Number.isInteger(zoom) || !Number.isInteger(tileX) || !Number.isInteger(tileY)) {
+  if (
+    !source ||
+    theme !== "nature" ||
+    !Number.isInteger(zoom) ||
+    !Number.isInteger(tileX) ||
+    !Number.isInteger(tileY)
+  ) {
     return Promise.resolve(null);
   }
   const cacheKey = `${theme}|${featureId}`;
@@ -1112,7 +1263,7 @@ function getAreaGlobalAnchor(
       tileX as number,
       tileY as number,
       labelAnchorCache,
-      datasetMaxZoom ?? (zoom as number)
+      datasetMaxZoom ?? (zoom as number),
     ).catch(() => null);
     areaAnchorCache.set(cacheKey, cached);
   }
@@ -1131,13 +1282,21 @@ async function resolveAreaGlobalAnchor(
   tileX: number,
   tileY: number,
   labelAnchorCache: LabelAnchorCache,
-  maxZoom: number
+  maxZoom: number,
 ): Promise<GlobalAreaAnchor | null> {
   const key: LabelAnchorKey = { sourceLayer: "park", featureId };
   const persisted = await labelAnchorCache.get(key);
   if (persisted !== undefined) return persisted;
 
-  const computed = await computeAreaGlobalAnchor(source, featureId, normalizedName, zoom, tileX, tileY, maxZoom);
+  const computed = await computeAreaGlobalAnchor(
+    source,
+    featureId,
+    normalizedName,
+    zoom,
+    tileX,
+    tileY,
+    maxZoom,
+  );
   await labelAnchorCache.set(key, computed);
   return computed;
 }
@@ -1148,7 +1307,7 @@ function resolveOwnedLocalAnchor(
   globalAnchor: GlobalAreaAnchor,
   zoom: number,
   tileX: number,
-  tileY: number
+  tileY: number,
 ): { x: number; y: number } | null {
   const scale = 256 * 2 ** zoom;
   const gx = globalAnchor.fx * scale;
@@ -1164,7 +1323,7 @@ function buildGlobalLabelBucketKey(
   labelText: string,
   anchor: { x: number; y: number } | null,
   tileX?: number,
-  tileY?: number
+  tileY?: number,
 ): string {
   const normalized = normalizeLabelText(labelText);
   if (anchor === null) {
@@ -1194,7 +1353,7 @@ async function renderNatureLabels(
   source: TileSource | undefined,
   labelAnchorCache: LabelAnchorCache,
   mainTransform?: OverzoomTransform,
-  datasetMaxZoom?: number
+  datasetMaxZoom?: number,
 ): Promise<void> {
   const waterTextStyle = getNatureTextStyle("water");
   const natureTextStyle = getNatureTextStyle("nature");
@@ -1206,7 +1365,10 @@ async function renderNatureLabels(
     targetGroup: "water" | "landuse";
     theme: "water" | "nature";
     style: SvgStyle | null;
-    canRender: (properties: FeatureProps, geometry: NormalizedGeometry) => boolean;
+    canRender: (
+      properties: FeatureProps,
+      geometry: NormalizedGeometry,
+    ) => boolean;
     lineLabels: boolean;
   }> = [
     {
@@ -1214,7 +1376,8 @@ async function renderNatureLabels(
       targetGroup: "water",
       theme: "water",
       style: waterTextStyle,
-      canRender: (properties, geometry) => shouldRenderWaterLabel(properties, geometry, zoomLevel),
+      canRender: (properties, geometry) =>
+        shouldRenderWaterLabel(properties, geometry, zoomLevel),
       lineLabels: true,
     },
     {
@@ -1222,7 +1385,8 @@ async function renderNatureLabels(
       targetGroup: "water",
       theme: "water",
       style: waterTextStyle,
-      canRender: (properties, geometry) => shouldRenderWaterLabel(properties, geometry, zoomLevel),
+      canRender: (properties, geometry) =>
+        shouldRenderWaterLabel(properties, geometry, zoomLevel),
       lineLabels: true,
     },
     {
@@ -1230,7 +1394,8 @@ async function renderNatureLabels(
       targetGroup: "landuse",
       theme: "nature",
       style: natureTextStyle,
-      canRender: (_, geometry) => shouldRenderNatureAreaLabel(geometry, zoomLevel),
+      canRender: (_, geometry) =>
+        shouldRenderNatureAreaLabel(geometry, zoomLevel),
       lineLabels: false,
     },
   ];
@@ -1250,43 +1415,58 @@ async function renderNatureLabels(
         const labelText = getFeatureLabel(properties);
         if (!labelText) continue;
         if (!config.canRender(properties, geometry)) continue;
-        if (config.theme === "nature" && shouldSuppressNatureLabel(properties)) continue;
+        if (config.theme === "nature" && shouldSuppressNatureLabel(properties))
+          continue;
 
         const className = buildFeatureClasses(config.targetGroup, properties);
-        const labelStyle = getNatureLabelStyle(config.style, properties, config.theme);
+        const labelStyle = getNatureLabelStyle(
+          config.style,
+          properties,
+          config.theme,
+        );
         if (!labelStyle) continue;
-        const renderAttributes = buildFeatureRenderAttributes(feature as { id?: unknown; properties?: Record<string, unknown> });
+        const renderAttributes = buildFeatureRenderAttributes(
+          feature as { id?: unknown; properties?: Record<string, unknown> },
+        );
         if (config.lineLabels && geometry.kind === "LineString") {
           const rawLongestLine = pickLongestLine(geometry.lines);
           if (rawLongestLine.length < 2) continue;
           const normalizedLabelText = normalizeLabelText(labelText);
           const lineFeatureId =
-            getFeatureDataId(feature as { id?: unknown; properties?: Record<string, unknown> }) ??
-            `${SYNTHETIC_FEATURE_ID_PREFIX}${normalizedLabelText}`;
-          const { line: joinedLine, extended: crossedTileEdge } = await extendLineAcrossTileEdges(
-            source,
-            WATER_LINE_LABEL_SOURCE_LAYERS,
-            lineFeatureId,
-            normalizedLabelText,
-            rawLongestLine,
-            zoomLevel,
-            tileX,
-            tileY,
-            datasetMaxZoom
-          );
+            getFeatureDataId(
+              feature as { id?: unknown; properties?: Record<string, unknown> },
+            ) ?? `${SYNTHETIC_FEATURE_ID_PREFIX}${normalizedLabelText}`;
+          const { line: joinedLine, extended: crossedTileEdge } =
+            await extendLineAcrossTileEdges(
+              source,
+              WATER_LINE_LABEL_SOURCE_LAYERS,
+              lineFeatureId,
+              normalizedLabelText,
+              rawLongestLine,
+              zoomLevel,
+              tileX,
+              tileY,
+              datasetMaxZoom,
+            );
           const longestLine = simplifyLineForLabel(joinedLine);
           if (longestLine.length < 2) continue;
           const pathData = lineToPathData(longestLine);
           if (!pathData) continue;
-          const bounds = buildLineLabelBounds(longestLine, labelText, labelStyle, !crossedTileEdge);
+          const bounds = buildLineLabelBounds(
+            longestLine,
+            labelText,
+            labelStyle,
+            !crossedTileEdge,
+          );
           if (!bounds) continue;
-          const anchor = longestLine[Math.floor(longestLine.length / 2)] ?? null;
+          const anchor =
+            longestLine[Math.floor(longestLine.length / 2)] ?? null;
           const dedupKey = buildGlobalLabelBucketKey(
             config.theme,
             labelText,
             anchor,
             tileX,
-            tileY
+            tileY,
           );
           labelId += 1;
           const label = renderLineLabelElement(
@@ -1295,7 +1475,7 @@ async function renderNatureLabels(
             labelText,
             className ? `${className} nature-label` : "nature-label",
             labelStyle,
-            renderAttributes
+            renderAttributes,
           );
           if (label) {
             candidates.push({
@@ -1324,8 +1504,9 @@ async function renderNatureLabels(
         // several distinct real-world features can share one name).
         const normalizedLabelText = normalizeLabelText(labelText);
         const featureId =
-          getFeatureDataId(feature as { id?: unknown; properties?: Record<string, unknown> }) ??
-          `${SYNTHETIC_FEATURE_ID_PREFIX}${normalizedLabelText}`;
+          getFeatureDataId(
+            feature as { id?: unknown; properties?: Record<string, unknown> },
+          ) ?? `${SYNTHETIC_FEATURE_ID_PREFIX}${normalizedLabelText}`;
         const globalAnchor = await getAreaGlobalAnchor(
           source,
           config.theme,
@@ -1335,13 +1516,22 @@ async function renderNatureLabels(
           tileX,
           tileY,
           labelAnchorCache,
-          datasetMaxZoom
+          datasetMaxZoom,
         );
         if (globalAnchor) {
-          if (!Number.isInteger(zoomLevel) || !Number.isInteger(tileX) || !Number.isInteger(tileY)) {
+          if (
+            !Number.isInteger(zoomLevel) ||
+            !Number.isInteger(tileX) ||
+            !Number.isInteger(tileY)
+          ) {
             continue;
           }
-          const owned = resolveOwnedLocalAnchor(globalAnchor, zoomLevel as number, tileX as number, tileY as number);
+          const owned = resolveOwnedLocalAnchor(
+            globalAnchor,
+            zoomLevel as number,
+            tileX as number,
+            tileY as number,
+          );
           if (!owned) continue;
           anchor = owned;
           usesGlobalAreaAnchor = true;
@@ -1349,7 +1539,10 @@ async function renderNatureLabels(
 
         const bounds = buildAnchoredLabelBounds(anchor, labelText, labelStyle);
         if (!bounds) continue;
-        if (!usesGlobalAreaAnchor && shouldSuppressSmallNatureReserveLabel(properties, geometry, bounds)) {
+        if (
+          !usesGlobalAreaAnchor &&
+          shouldSuppressSmallNatureReserveLabel(properties, geometry, bounds)
+        ) {
           continue;
         }
         const dedupKey = buildGlobalLabelBucketKey(
@@ -1357,14 +1550,14 @@ async function renderNatureLabels(
           labelText,
           anchor,
           tileX,
-          tileY
+          tileY,
         );
         const label = renderLabelElement(
           anchor,
           labelText,
           className ? `${className} nature-label` : "nature-label",
           labelStyle,
-          renderAttributes
+          renderAttributes,
         );
         if (label) {
           candidates.push({
@@ -1389,7 +1582,7 @@ function renderLayerFeatures(
   renderLabels: boolean,
   zoomLevel: number | undefined,
   labelFragments: string[],
-  mainTransform?: OverzoomTransform
+  mainTransform?: OverzoomTransform,
 ): void {
   const fragments: string[] = [];
   const isRoadsLayer = layerName === "roads";
@@ -1402,12 +1595,18 @@ function renderLayerFeatures(
     for (let i = 0; i < layer.length; i += 1) {
       const feature = layer.feature(i);
       const properties = (feature.properties ?? {}) as FeatureProps;
-      const geometry = decodeFeatureGeometry(feature, layerExtent, mainTransform);
+      const geometry = decodeFeatureGeometry(
+        feature,
+        layerExtent,
+        mainTransform,
+      );
       if (!geometry) continue;
       if (!isFeatureAllowedForLayer(layerName, properties, zoomLevel)) continue;
       const labelText = getFeatureLabel(properties);
       const textStyle =
-        renderLabels && labelText ? getTextStyleForFeature(layerName, properties, zoomLevel) : null;
+        renderLabels && labelText
+          ? getTextStyleForFeature(layerName, properties, zoomLevel)
+          : null;
       const hidePlacePoint =
         layerName === "places" &&
         geometry.kind === "Point" &&
@@ -1415,27 +1614,59 @@ function renderLayerFeatures(
       if (hidePlacePoint) continue;
 
       const className = buildFeatureClasses(layerName, properties);
-      const style = getStyleForFeature(layerName, geometry.kind, properties, zoomLevel);
-      const renderAttributes = buildFeatureRenderAttributes(feature as { id?: unknown; properties?: Record<string, unknown> });
+      const style = getStyleForFeature(
+        layerName,
+        geometry.kind,
+        properties,
+        zoomLevel,
+      );
+      const renderAttributes = buildFeatureRenderAttributes(
+        feature as { id?: unknown; properties?: Record<string, unknown> },
+      );
       if (!style) continue;
 
       if (layerName === "railways") {
         fragments.push(
-          ...renderRailwayElements(geometry, style, getRailSleeperStyle(), className, renderAttributes)
+          ...renderRailwayElements(
+            geometry,
+            style,
+            getRailSleeperStyle(),
+            className,
+            renderAttributes,
+          ),
         );
       } else if (isRoadsLayer) {
         const priority = getRoadRenderPriority(normalizeRoadClass(properties));
-        for (const html of renderGeometryElements(geometry, style, className, renderAttributes)) {
+        for (const html of renderGeometryElements(
+          geometry,
+          style,
+          className,
+          renderAttributes,
+        )) {
           roadFragments.push({ priority, html });
         }
       } else {
-        fragments.push(...renderGeometryElements(geometry, style, className, renderAttributes));
+        fragments.push(
+          ...renderGeometryElements(
+            geometry,
+            style,
+            className,
+            renderAttributes,
+          ),
+        );
       }
 
       if (renderLabels && labelText && textStyle) {
         const anchor = getLabelAnchor(geometry);
-        if (!shouldRenderAnchoredLabelInTile(anchor, labelText, textStyle)) continue;
-        const text = renderLabelElement(anchor, labelText, className, textStyle, renderAttributes);
+        if (!shouldRenderAnchoredLabelInTile(anchor, labelText, textStyle))
+          continue;
+        const text = renderLabelElement(
+          anchor,
+          labelText,
+          className,
+          textStyle,
+          renderAttributes,
+        );
         if (text) labelFragments.push(text);
       }
     }
@@ -1451,7 +1682,12 @@ function renderLayerFeatures(
   }
 }
 
-const ROAD_LABEL_SOURCE_LAYERS = ["transportation_name", "road_name", "roads", "transportation"];
+const ROAD_LABEL_SOURCE_LAYERS = [
+  "transportation_name",
+  "road_name",
+  "roads",
+  "transportation",
+];
 
 async function renderRoadLabels(
   tile: VectorTile,
@@ -1461,7 +1697,7 @@ async function renderRoadLabels(
   tileY: number | undefined,
   source: TileSource | undefined,
   mainTransform?: OverzoomTransform,
-  datasetMaxZoom?: number
+  datasetMaxZoom?: number,
 ): Promise<void> {
   const seenRoadLabels = new Set<string>();
   let roadLabelId = 0;
@@ -1471,35 +1707,42 @@ async function renderRoadLabels(
     const layerExtent = roadNameLayer.extent || 4096;
     for (let i = 0; i < roadNameLayer.length; i += 1) {
       const feature = roadNameLayer.feature(i);
-      const geometry = decodeFeatureGeometry(feature, layerExtent, mainTransform);
+      const geometry = decodeFeatureGeometry(
+        feature,
+        layerExtent,
+        mainTransform,
+      );
       if (!geometry || geometry.kind !== "LineString") continue;
       const properties = (feature.properties ?? {}) as FeatureProps;
       const roadClass = normalizeRoadClass(properties);
       const labelText = getRoadLabelText(properties, roadClass);
       if (!labelText) continue;
-      if (!shouldRenderRoadLabelByZoom(roadClass, zoomLevel, datasetMaxZoom)) continue;
+      if (!shouldRenderRoadLabelByZoom(roadClass, zoomLevel, datasetMaxZoom))
+        continue;
       const textStyle = getTextStyleForLayer("roads");
       if (!textStyle) continue;
       const rawLongestLine = pickLongestLine(geometry.lines);
       if (rawLongestLine.length < 2) continue;
       const featureId =
-        getFeatureDataId(feature as { id?: unknown; properties?: Record<string, unknown> }) ??
-        `${SYNTHETIC_FEATURE_ID_PREFIX}${normalizeLabelText(labelText)}`;
+        getFeatureDataId(
+          feature as { id?: unknown; properties?: Record<string, unknown> },
+        ) ?? `${SYNTHETIC_FEATURE_ID_PREFIX}${normalizeLabelText(labelText)}`;
       // If this line touches a tile edge, try to continue it into whichever neighbor
       // tile has the rest of the same feature, so the text can be split naturally
       // across both tiles by SVG viewport clipping instead of rendering oddly placed
       // or getting suppressed entirely.
-      const { line: joinedLine, extended: crossedTileEdge } = await extendLineAcrossTileEdges(
-        source,
-        ROAD_LABEL_SOURCE_LAYERS,
-        featureId,
-        normalizeLabelText(labelText),
-        rawLongestLine,
-        zoomLevel,
-        tileX,
-        tileY,
-        datasetMaxZoom
-      );
+      const { line: joinedLine, extended: crossedTileEdge } =
+        await extendLineAcrossTileEdges(
+          source,
+          ROAD_LABEL_SOURCE_LAYERS,
+          featureId,
+          normalizeLabelText(labelText),
+          rawLongestLine,
+          zoomLevel,
+          tileX,
+          tileY,
+          datasetMaxZoom,
+        );
       const longestLine = simplifyLineForLabel(joinedLine);
       if (longestLine.length < 2) continue;
       const pathData = lineToPathData(longestLine);
@@ -1508,20 +1751,30 @@ async function renderRoadLabels(
       // require the portion of the line it will actually cover to stay in the tile -
       // unless it was extended into a neighbor tile, in which case each tile is
       // expected to only show part of the text by design (see buildLineLabelBounds).
-      if (!buildLineLabelBounds(longestLine, labelText, textStyle, !crossedTileEdge)) continue;
+      if (
+        !buildLineLabelBounds(
+          longestLine,
+          labelText,
+          textStyle,
+          !crossedTileEdge,
+        )
+      )
+        continue;
       const dedupKey = `${labelText}|${pathData}`;
       if (seenRoadLabels.has(dedupKey)) continue;
       seenRoadLabels.add(dedupKey);
       roadLabelId += 1;
       const className = buildFeatureClasses("roads", properties);
-      const renderAttributes = buildFeatureRenderAttributes( feature as { id?: unknown; properties?: Record<string, unknown> });
+      const renderAttributes = buildFeatureRenderAttributes(
+        feature as { id?: unknown; properties?: Record<string, unknown> },
+      );
       const label = renderLineLabelElement(
         `road-label-${roadLabelId}`,
         pathData,
         labelText,
         className,
         textStyle,
-        renderAttributes
+        renderAttributes,
       );
       if (label) labelFragments.push(label);
     }
@@ -1532,7 +1785,7 @@ export async function renderTileToSvg(
   tileBuffer: ArrayBuffer | Uint8Array,
   options: RenderOptions = {},
   archive?: TileSource,
-  labelAnchorCache: LabelAnchorCache = defaultLabelAnchorCache
+  labelAnchorCache: LabelAnchorCache = defaultLabelAnchorCache,
 ): Promise<string | null> {
   if (!tileBuffer || tileBuffer.byteLength === 0) return null;
 
@@ -1553,22 +1806,49 @@ export async function renderTileToSvg(
   const zoomLevel = Number.isInteger(options.zoom) ? options.zoom : undefined;
   const tileX = Number.isInteger(options.tileX) ? options.tileX : undefined;
   const tileY = Number.isInteger(options.tileY) ? options.tileY : undefined;
-  const datasetMaxZoom = Number.isInteger(options.datasetMaxZoom) ? (options.datasetMaxZoom as number) : undefined;
+  const datasetMaxZoom = Number.isInteger(options.datasetMaxZoom)
+    ? (options.datasetMaxZoom as number)
+    : undefined;
   // `tileBuffer` is the real ancestor tile's bytes whenever this request is
   // overzoomed (zoomLevel > datasetMaxZoom) - this transform crops+scales its
   // already-decoded geometry to stand in for the requested tile. Identity (a no-op)
   // whenever datasetMaxZoom is unset or zoomLevel is within range.
   const mainTransform =
-    Number.isInteger(zoomLevel) && Number.isInteger(tileX) && Number.isInteger(tileY) && datasetMaxZoom !== undefined
-      ? computeOverzoomTransform(zoomLevel as number, tileX as number, tileY as number, datasetMaxZoom)
+    Number.isInteger(zoomLevel) &&
+    Number.isInteger(tileX) &&
+    Number.isInteger(tileY) &&
+    datasetMaxZoom !== undefined
+      ? computeOverzoomTransform(
+          zoomLevel as number,
+          tileX as number,
+          tileY as number,
+          datasetMaxZoom,
+        )
       : undefined;
 
   for (const layerName of getLayerOrder()) {
     if (!isSupportedLayer(layerName)) continue;
-    renderLayerFeatures(groups, tile, layerName, renderLabels, zoomLevel, featureLabelFragments, mainTransform);
+    renderLayerFeatures(
+      groups,
+      tile,
+      layerName,
+      renderLabels,
+      zoomLevel,
+      featureLabelFragments,
+      mainTransform,
+    );
 
     if (layerName === "roads" && renderRoadLabelsEnabled) {
-      await renderRoadLabels(tile, roadLabelFragments, zoomLevel, tileX, tileY, archive, mainTransform, datasetMaxZoom);
+      await renderRoadLabels(
+        tile,
+        roadLabelFragments,
+        zoomLevel,
+        tileX,
+        tileY,
+        archive,
+        mainTransform,
+        datasetMaxZoom,
+      );
     }
   }
 
@@ -1582,7 +1862,7 @@ export async function renderTileToSvg(
       archive,
       labelAnchorCache,
       mainTransform,
-      datasetMaxZoom
+      datasetMaxZoom,
     );
   }
 

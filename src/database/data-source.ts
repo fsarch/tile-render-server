@@ -9,8 +9,8 @@
 // new migrations or running/reverting them without booting the whole app.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { DataSource } from "typeorm";
 import { load } from "js-yaml";
+import { DataSource } from "typeorm";
 import { DatasetVersion } from "./entities/dataset-version.entity.js";
 import { LabelAnchor } from "./entities/label-anchor.entity.js";
 import { Template } from "./entities/template.entity.js";
@@ -26,8 +26,13 @@ type DatabaseConfig = {
 };
 
 function loadDatabaseConfig(): DatabaseConfig {
-  const configPath = resolve(process.cwd(), process.env.CONFIG_FILE_PATH || "config.yaml");
-  const config = load(readFileSync(configPath, "utf8")) as { database?: DatabaseConfig };
+  const configPath = resolve(
+    process.cwd(),
+    process.env.CONFIG_FILE_PATH || "config.yaml",
+  );
+  const config = load(readFileSync(configPath, "utf8")) as {
+    database?: DatabaseConfig;
+  };
   if (!config.database) {
     throw new Error(`No "database" section found in ${configPath}`);
   }
@@ -38,7 +43,9 @@ const databaseConfig = loadDatabaseConfig();
 if (databaseConfig.type !== "postgres") {
   // Only postgres is used by this project; keep this CLI helper simple rather than
   // reproducing @fsarch/server's full sqlite/cockroachdb type-narrowing dance.
-  throw new Error(`database.type "${databaseConfig.type}" is not supported by the migration CLI (expected "postgres")`);
+  throw new Error(
+    `database.type "${databaseConfig.type}" is not supported by the migration CLI (expected "postgres")`,
+  );
 }
 
 export default new DataSource({

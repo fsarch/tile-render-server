@@ -1,0 +1,61 @@
+# Distroless variant - no shell/package manager, smaller attack surface
+# (most of the plain Dockerfile's OS-level CVEs come from tools this app
+# never runs at all: perl, util-linux, login, mount, ...). Same build/runtime
+# stages as ./Dockerfile otherwise - see that file for the reasoning behind
+# the node-gyp apt package.
+
+# Base
+FROM node:24.20.0-trixie-slim AS base
+
+ENV PORT 8080
+
+RUN corepack enable
+
+WORKDIR /usr/src/app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+
+# Production Deps
+FROM base AS deps
+
+ENV NODE_ENV production
+
+RUN apt-get update && \
+    apt-get install -y node-gyp && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+RUN pnpm install --frozen-lockfile --prod
+
+
+# Build
+FROM base AS builder
+
+RUN apt-get update && \
+    apt-get install -y node-gyp && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+RUN pnpm install --frozen-lockfile
+
+COPY . ./
+RUN pnpm run build
+
+
+# Main
+FROM gcr.io/distroless/nodejs24-debian13:nonroot
+
+ENV NODE_ENV production
+ENV NODE_OPTIONS="--import @fsarch/server/register"
+ENV PORT 8080
+
+WORKDIR /usr/src/app
+
+EXPOSE 8080
+
+COPY --from=builder --chown=nonroot:nonroot /usr/src/app/dist ./dist
+COPY --from=deps --chown=nonroot:nonroot /usr/src/app/node_modules ./node_modules
+
+# distroless/nodejs's ENTRYPOINT is already the node binary - CMD is just
+# its argv, no "node" prefix (and no USER - the :nonroot tag already runs
+# as the built-in nonroot user).
+CMD ["./dist/main.js"]

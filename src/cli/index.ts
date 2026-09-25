@@ -98,7 +98,12 @@ function formatEta(seconds: number): string {
   return `${h}:${m}:${s}`;
 }
 
-function createWorker(inputPath: string, labels: boolean, roadLabels: boolean, natureLabels: boolean): Worker {
+function createWorker(
+  inputPath: string,
+  labels: boolean,
+  roadLabels: boolean,
+  natureLabels: boolean,
+): Worker {
   return new Worker(new URL("./worker.js", import.meta.url), {
     workerData: { inputPath, labels, roadLabels, natureLabels },
   });
@@ -122,7 +127,7 @@ async function main(): Promise<void> {
       `roadLabels=${cli.roadLabels}`,
       `natureLabels=${cli.natureLabels}`,
       `totalTiles=${totalTiles}`,
-    ].join(" | ")
+    ].join(" | "),
   );
 
   if (totalTiles === 0) {
@@ -168,14 +173,21 @@ async function main(): Promise<void> {
   };
 
   for (let i = 0; i < workerCount; i += 1) {
-    const worker = createWorker(cli.input, cli.labels, cli.roadLabels, cli.natureLabels);
+    const worker = createWorker(
+      cli.input,
+      cli.labels,
+      cli.roadLabels,
+      cli.natureLabels,
+    );
     worker.on("message", (message: WorkerMessage) => {
       if (message.type === "closed") return;
       if (message.status === "rendered") {
         stats.rendered += 1;
       } else if (message.status === "error") {
         stats.errors += 1;
-        console.error(`Fehler z${message.z}/${message.x}/${message.y}: ${message.error ?? "unbekannt"}`);
+        console.error(
+          `Fehler z${message.z}/${message.x}/${message.y}: ${message.error ?? "unbekannt"}`,
+        );
       } else {
         stats.skipped += 1;
       }
@@ -207,7 +219,7 @@ async function main(): Promise<void> {
     const remaining = totalTiles - stats.done;
     const etaSeconds = tps > 0 ? remaining / tps : Number.POSITIVE_INFINITY;
     console.log(
-      `zoom=${stats.currentZoom} done=${stats.done}/${totalTiles} rendered=${stats.rendered} skipped=${stats.skipped} errors=${stats.errors} tps=${tps.toFixed(2)} eta=${formatEta(etaSeconds)}`
+      `zoom=${stats.currentZoom} done=${stats.done}/${totalTiles} rendered=${stats.rendered} skipped=${stats.skipped} errors=${stats.errors} tps=${tps.toFixed(2)} eta=${formatEta(etaSeconds)}`,
     );
   }, 1000);
 
@@ -229,7 +241,12 @@ async function main(): Promise<void> {
     worker.postMessage({
       type: "render",
       ...coord,
-      outputPath: resolve(cli.output, String(coord.z), String(coord.x), `${coord.y}.svg`),
+      outputPath: resolve(
+        cli.output,
+        String(coord.z),
+        String(coord.x),
+        `${coord.y}.svg`,
+      ),
       overwrite: cli.overwrite,
     });
   }
@@ -252,14 +269,14 @@ async function main(): Promise<void> {
           setTimeout(() => {
             void worker.terminate();
           }, 200);
-        })
-    )
+        }),
+    ),
   );
 
   const elapsedSeconds = Math.max(1, (Date.now() - start) / 1000);
   const tps = stats.done / elapsedSeconds;
   console.log(
-    `fertig: rendered=${stats.rendered} skipped=${stats.skipped} errors=${stats.errors} total=${stats.done} tps=${tps.toFixed(2)}`
+    `fertig: rendered=${stats.rendered} skipped=${stats.skipped} errors=${stats.errors} total=${stats.done} tps=${tps.toFixed(2)}`,
   );
 }
 

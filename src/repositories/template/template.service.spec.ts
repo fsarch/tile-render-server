@@ -4,13 +4,25 @@ import { TemplateService } from "./template.service.js";
 
 describe("TemplateService", () => {
   it("getActive looks up the single active row", async () => {
-    const findOneBy = vi.fn().mockResolvedValue({ id: "abc", name: "dark", colors: {}, isActive: true });
+    const findOneBy = vi
+      .fn()
+      .mockResolvedValue({
+        id: "abc",
+        name: "dark",
+        colors: {},
+        isActive: true,
+      });
     const service = new TemplateService({ findOneBy } as never);
 
     const result = await service.getActive();
 
     expect(findOneBy).toHaveBeenCalledWith({ isActive: true });
-    expect(result).toEqual({ id: "abc", name: "dark", colors: {}, isActive: true });
+    expect(result).toEqual({
+      id: "abc",
+      name: "dark",
+      colors: {},
+      isActive: true,
+    });
   });
 
   it("getActive resolves to null when nothing is active", async () => {
@@ -21,13 +33,25 @@ describe("TemplateService", () => {
   });
 
   it("getById looks up a row by id, independent of isActive", async () => {
-    const findOneBy = vi.fn().mockResolvedValue({ id: "abc", name: "dark", colors: {}, isActive: false });
+    const findOneBy = vi
+      .fn()
+      .mockResolvedValue({
+        id: "abc",
+        name: "dark",
+        colors: {},
+        isActive: false,
+      });
     const service = new TemplateService({ findOneBy } as never);
 
     const result = await service.getById("abc");
 
     expect(findOneBy).toHaveBeenCalledWith({ id: "abc" });
-    expect(result).toEqual({ id: "abc", name: "dark", colors: {}, isActive: false });
+    expect(result).toEqual({
+      id: "abc",
+      name: "dark",
+      colors: {},
+      isActive: false,
+    });
   });
 
   it("getById resolves to null when no row has that id", async () => {
@@ -46,7 +70,7 @@ describe("TemplateService", () => {
     const result = await service.create("dark", colors);
 
     expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "dark", colors, isActive: false })
+      expect.objectContaining({ name: "dark", colors, isActive: false }),
     );
     expect(typeof result.id).toBe("string");
     expect(result.id.length).toBeGreaterThan(0);
@@ -54,16 +78,38 @@ describe("TemplateService", () => {
 
   it("activate deactivates every row, activates the target, and returns it", async () => {
     const update = vi.fn().mockResolvedValue({ affected: 1 });
-    const findOneByOrFail = vi.fn().mockResolvedValue({ id: "target", name: "dark", colors: {}, isActive: true });
+    const findOneByOrFail = vi
+      .fn()
+      .mockResolvedValue({
+        id: "target",
+        name: "dark",
+        colors: {},
+        isActive: true,
+      });
     const manager = { update, findOneByOrFail };
     const transaction = vi.fn((fn) => fn(manager));
     const service = new TemplateService({ manager: { transaction } } as never);
 
     const result = await service.activate("target");
 
-    expect(update).toHaveBeenNthCalledWith(1, expect.anything(), { isActive: true }, { isActive: false });
-    expect(update).toHaveBeenNthCalledWith(2, expect.anything(), { id: "target" }, { isActive: true });
-    expect(result).toEqual({ id: "target", name: "dark", colors: {}, isActive: true });
+    expect(update).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      { isActive: true },
+      { isActive: false },
+    );
+    expect(update).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      { id: "target" },
+      { isActive: true },
+    );
+    expect(result).toEqual({
+      id: "target",
+      name: "dark",
+      colors: {},
+      isActive: true,
+    });
   });
 
   it("activate throws NotFoundException when the id doesn't exist", async () => {
@@ -72,6 +118,8 @@ describe("TemplateService", () => {
     const transaction = vi.fn((fn) => fn(manager));
     const service = new TemplateService({ manager: { transaction } } as never);
 
-    await expect(service.activate("missing")).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.activate("missing")).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

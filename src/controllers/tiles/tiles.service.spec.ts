@@ -1,12 +1,15 @@
 import { NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import type { ConfigService } from "@nestjs/config";
 import { describe, expect, it, vi } from "vitest";
-import { TilesService } from "./tiles.service.js";
-import { RenderQueueFullError, type RenderWorkerPool } from "./render-worker-pool.js";
-import type { PostgresLabelAnchorCache } from "../../repositories/label-anchor/label-anchor-cache.postgres.js";
 import type { DatasetVersionService } from "../../repositories/dataset-version/dataset-version.service.js";
+import type { PostgresLabelAnchorCache } from "../../repositories/label-anchor/label-anchor-cache.postgres.js";
 import type { TemplateService } from "../../repositories/template/template.service.js";
 import type { IStorageProvider } from "../../storage/storage-provider.interface.js";
+import {
+  RenderQueueFullError,
+  type RenderWorkerPool,
+} from "./render-worker-pool.js";
+import { TilesService } from "./tiles.service.js";
 
 // TestTilesService always overrides renderSvg too (see below), so this fake never
 // actually renders anything - it only exists so onModuleInit()/onModuleDestroy() (which
@@ -29,14 +32,23 @@ const fakeLabelAnchorCache = {
   setDatasetVersionId: vi.fn(),
 } as unknown as PostgresLabelAnchorCache;
 
-function createDatasetVersionService(path: string | null = "./planet.pmtiles"): DatasetVersionService {
+function createDatasetVersionService(
+  path: string | null = "./planet.pmtiles",
+): DatasetVersionService {
   return {
-    getActive: vi.fn().mockResolvedValue(path === null ? null : { id: "v1", path, isActive: true }),
+    getActive: vi
+      .fn()
+      .mockResolvedValue(
+        path === null ? null : { id: "v1", path, isActive: true },
+      ),
   } as unknown as DatasetVersionService;
 }
 
-function createTemplateService(colors: Record<string, string> | null = null): TemplateService {
-  const row = colors === null ? null : { id: "t1", name: "test", colors, isActive: true };
+function createTemplateService(
+  colors: Record<string, string> | null = null,
+): TemplateService {
+  const row =
+    colors === null ? null : { id: "t1", name: "test", colors, isActive: true };
   return {
     getActive: vi.fn().mockResolvedValue(row),
     getById: vi.fn((id: string) => Promise.resolve(id === "t1" ? row : null)),
@@ -46,7 +58,9 @@ function createTemplateService(colors: Record<string, string> | null = null): Te
 // Defaults to an always-miss cache, so existing tests exercise the same
 // render-from-scratch path they did before caching existed, unless a test overrides
 // `exists`/`readFile` to simulate a hit.
-function createStorageProvider(overrides: Partial<IStorageProvider> = {}): IStorageProvider {
+function createStorageProvider(
+  overrides: Partial<IStorageProvider> = {},
+): IStorageProvider {
   return {
     readFile: vi.fn(),
     writeFile: vi.fn().mockResolvedValue(undefined),
@@ -63,23 +77,40 @@ class TestTilesService extends TilesService {
     configService: ConfigService,
     private readonly openArchiveMock: (inputPath: string) => Promise<{
       close: () => Promise<void>;
-      getTile: (z: number, x: number, y: number) => Promise<ArrayBuffer | Uint8Array | undefined>;
+      getTile: (
+        z: number,
+        x: number,
+        y: number,
+      ) => Promise<ArrayBuffer | Uint8Array | undefined>;
       getHeader: () => { maxZoom: number };
     }>,
-    private readonly renderSvgMock: (tileBuffer: ArrayBuffer | Uint8Array, options: Record<string, unknown>) => string | null,
+    private readonly renderSvgMock: (
+      tileBuffer: ArrayBuffer | Uint8Array,
+      options: Record<string, unknown>,
+    ) => string | null,
     datasetVersionService: DatasetVersionService = createDatasetVersionService(),
     templateService: TemplateService = createTemplateService(),
     dataStorage: IStorageProvider = createStorageProvider(),
-    cacheStorage: IStorageProvider = createStorageProvider()
+    cacheStorage: IStorageProvider = createStorageProvider(),
   ) {
-    super(configService, fakeLabelAnchorCache, datasetVersionService, templateService, dataStorage, cacheStorage);
+    super(
+      configService,
+      fakeLabelAnchorCache,
+      datasetVersionService,
+      templateService,
+      dataStorage,
+      cacheStorage,
+    );
   }
 
   protected override openArchive(inputPath: string) {
     return this.openArchiveMock(inputPath);
   }
 
-  protected override async renderSvg(tileBuffer: ArrayBuffer | Uint8Array, options: Record<string, unknown>) {
+  protected override async renderSvg(
+    tileBuffer: ArrayBuffer | Uint8Array,
+    options: Record<string, unknown>,
+  ) {
     return this.renderSvgMock(tileBuffer, options);
   }
 
@@ -96,14 +127,25 @@ class PoolTestTilesService extends TilesService {
     configService: ConfigService,
     private readonly openArchiveMock: (inputPath: string) => Promise<{
       close: () => Promise<void>;
-      getTile: (z: number, x: number, y: number) => Promise<ArrayBuffer | Uint8Array | undefined>;
+      getTile: (
+        z: number,
+        x: number,
+        y: number,
+      ) => Promise<ArrayBuffer | Uint8Array | undefined>;
       getHeader: () => { maxZoom: number };
     }>,
     private readonly renderPool: RenderWorkerPool,
     datasetVersionService: DatasetVersionService = createDatasetVersionService(),
-    templateService: TemplateService = createTemplateService(null)
+    templateService: TemplateService = createTemplateService(null),
   ) {
-    super(configService, fakeLabelAnchorCache, datasetVersionService, templateService, createStorageProvider(), createStorageProvider());
+    super(
+      configService,
+      fakeLabelAnchorCache,
+      datasetVersionService,
+      templateService,
+      createStorageProvider(),
+      createStorageProvider(),
+    );
   }
 
   protected override openArchive(inputPath: string) {
@@ -140,7 +182,7 @@ describe("TilesService", () => {
       }),
       openArchive,
       renderTile,
-      createDatasetVersionService("./planet.pmtiles")
+      createDatasetVersionService("./planet.pmtiles"),
     );
 
     await service.onModuleInit();
@@ -158,7 +200,7 @@ describe("TilesService", () => {
         zoom: 3,
         tileX: 4,
         tileY: 5,
-      })
+      }),
     );
 
     await service.onModuleDestroy();
@@ -170,10 +212,12 @@ describe("TilesService", () => {
       createConfigService({}),
       vi.fn(),
       vi.fn(),
-      createDatasetVersionService(null)
+      createDatasetVersionService(null),
     );
 
-    await expect(service.renderTileSvg(3, 4, 5)).rejects.toThrow(/no active dataset_version/i);
+    await expect(service.renderTileSvg(3, 4, 5)).rejects.toThrow(
+      /no active dataset_version/i,
+    );
   });
 
   it("returns 404 when the tile is missing", async () => {
@@ -184,10 +228,12 @@ describe("TilesService", () => {
         getTile: vi.fn().mockResolvedValue(undefined),
         getHeader: () => ({ maxZoom: 14 }),
       }),
-      vi.fn().mockReturnValue("<svg />")
+      vi.fn().mockReturnValue("<svg />"),
     );
 
-    await expect(service.renderTileSvg(3, 4, 5)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.renderTileSvg(3, 4, 5)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it("returns 404 above the dataset's max zoom when overzoom isn't configured", async () => {
@@ -199,10 +245,12 @@ describe("TilesService", () => {
         getTile,
         getHeader: () => ({ maxZoom: 14 }),
       }),
-      vi.fn().mockReturnValue("<svg />")
+      vi.fn().mockReturnValue("<svg />"),
     );
 
-    await expect(service.renderTileSvg(15, 4, 5)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.renderTileSvg(15, 4, 5)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     expect(getTile).not.toHaveBeenCalled();
   });
 
@@ -216,7 +264,7 @@ describe("TilesService", () => {
         getTile,
         getHeader: () => ({ maxZoom: 14 }),
       }),
-      renderTile
+      renderTile,
     );
 
     // z=16, x=20, y=21 is 4 levels... shift=2 below its ancestor at z=14: (20>>2, 21>>2) = (5, 5).
@@ -226,7 +274,12 @@ describe("TilesService", () => {
     expect(getTile).toHaveBeenCalledWith(14, 5, 5);
     expect(renderTile).toHaveBeenCalledWith(
       expect.any(Uint8Array),
-      expect.objectContaining({ zoom: 16, tileX: 20, tileY: 21, datasetMaxZoom: 14 })
+      expect.objectContaining({
+        zoom: 16,
+        tileX: 20,
+        tileY: 21,
+        datasetMaxZoom: 14,
+      }),
     );
   });
 
@@ -239,10 +292,12 @@ describe("TilesService", () => {
         getTile,
         getHeader: () => ({ maxZoom: 14 }),
       }),
-      vi.fn().mockReturnValue("<svg />")
+      vi.fn().mockReturnValue("<svg />"),
     );
 
-    await expect(service.renderTileSvg(17, 4, 5)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.renderTileSvg(17, 4, 5)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     expect(getTile).not.toHaveBeenCalled();
   });
 
@@ -256,7 +311,7 @@ describe("TilesService", () => {
       }),
       vi.fn().mockReturnValue("<svg>rendered</svg>\n"),
       createDatasetVersionService(),
-      createTemplateService(null)
+      createTemplateService(null),
     );
 
     expect(await service.renderTileSvg(3, 4, 5)).toBe("<svg>rendered</svg>\n");
@@ -270,9 +325,13 @@ describe("TilesService", () => {
         getTile: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
         getHeader: () => ({ maxZoom: 14 }),
       }),
-      vi.fn().mockReturnValue('<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>\n'),
+      vi
+        .fn()
+        .mockReturnValue(
+          '<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>\n',
+        ),
       createDatasetVersionService(),
-      createTemplateService({ "--map-water": "#123456" })
+      createTemplateService({ "--map-water": "#123456" }),
     );
 
     const svg = await service.renderTileSvg(3, 4, 5);
@@ -290,9 +349,13 @@ describe("TilesService", () => {
         getTile: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
         getHeader: () => ({ maxZoom: 14 }),
       }),
-      vi.fn().mockReturnValue('<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>\n'),
+      vi
+        .fn()
+        .mockReturnValue(
+          '<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>\n',
+        ),
       createDatasetVersionService(),
-      templateService
+      templateService,
     );
 
     const svg = await service.renderTileSvg(3, 4, 5, "t1");
@@ -312,10 +375,12 @@ describe("TilesService", () => {
       }),
       vi.fn().mockReturnValue("<svg />"),
       createDatasetVersionService(),
-      createTemplateService(null)
+      createTemplateService(null),
     );
 
-    await expect(service.renderTileSvg(3, 4, 5, "does-not-exist")).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.renderTileSvg(3, 4, 5, "does-not-exist"),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   describe("rendered-tile cache (storage.cache)", () => {
@@ -334,7 +399,7 @@ describe("TilesService", () => {
         createDatasetVersionService("./planet.pmtiles"),
         createTemplateService(null),
         createStorageProvider(),
-        cacheStorage
+        cacheStorage,
       );
 
       const svg = await service.renderTileSvg(3, 4, 5);
@@ -342,8 +407,13 @@ describe("TilesService", () => {
       expect(svg).toBe("<svg>fresh</svg>");
       expect(renderTile).toHaveBeenCalledTimes(1);
       expect(cacheStorage.exists).toHaveBeenCalledWith("v1/3/4/5.svg");
-      expect(cacheStorage.mkdir).toHaveBeenCalledWith("v1/3/4", { recursive: true });
-      expect(cacheStorage.writeFile).toHaveBeenCalledWith("v1/3/4/5.svg", Buffer.from("<svg>fresh</svg>", "utf8"));
+      expect(cacheStorage.mkdir).toHaveBeenCalledWith("v1/3/4", {
+        recursive: true,
+      });
+      expect(cacheStorage.writeFile).toHaveBeenCalledWith(
+        "v1/3/4/5.svg",
+        Buffer.from("<svg>fresh</svg>", "utf8"),
+      );
     });
 
     it("returns the cached tile without rendering or fetching tile data again on a hit", async () => {
@@ -351,7 +421,9 @@ describe("TilesService", () => {
       const renderTile = vi.fn();
       const cacheStorage = createStorageProvider({
         exists: vi.fn().mockResolvedValue(true),
-        readFile: vi.fn().mockResolvedValue(Buffer.from("<svg>cached</svg>", "utf8")),
+        readFile: vi
+          .fn()
+          .mockResolvedValue(Buffer.from("<svg>cached</svg>", "utf8")),
       });
       const service = new TestTilesService(
         createConfigService({}),
@@ -364,7 +436,7 @@ describe("TilesService", () => {
         createDatasetVersionService("./planet.pmtiles"),
         createTemplateService(null),
         createStorageProvider(),
-        cacheStorage
+        cacheStorage,
       );
 
       const svg = await service.renderTileSvg(3, 4, 5);
@@ -379,7 +451,14 @@ describe("TilesService", () => {
     it("still applies the requested template on a cache hit (the cache only ever holds the un-styled render)", async () => {
       const cacheStorage = createStorageProvider({
         exists: vi.fn().mockResolvedValue(true),
-        readFile: vi.fn().mockResolvedValue(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>', "utf8")),
+        readFile: vi
+          .fn()
+          .mockResolvedValue(
+            Buffer.from(
+              '<svg xmlns="http://www.w3.org/2000/svg"><rect /></svg>',
+              "utf8",
+            ),
+          ),
       });
       const service = new TestTilesService(
         createConfigService({}),
@@ -392,7 +471,7 @@ describe("TilesService", () => {
         createDatasetVersionService(),
         createTemplateService({ "--map-water": "#123456" }),
         createStorageProvider(),
-        cacheStorage
+        cacheStorage,
       );
 
       const svg = await service.renderTileSvg(3, 4, 5);
@@ -409,14 +488,16 @@ describe("TilesService", () => {
         getTile: vi.fn().mockResolvedValue(undefined),
         getHeader: () => ({ maxZoom: 14 }),
       }),
-      vi.fn().mockReturnValue("<svg />")
+      vi.fn().mockReturnValue("<svg />"),
     );
 
     expect(service.getCacheControl()).toBe("public, max-age=3600");
   });
 
   describe("render pool delegation (real renderSvg)", () => {
-    function archiveFactory(getTile = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]))) {
+    function archiveFactory(
+      getTile = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+    ) {
       return vi.fn().mockResolvedValue({
         close: vi.fn().mockResolvedValue(undefined),
         getTile,
@@ -425,8 +506,15 @@ describe("TilesService", () => {
     }
 
     it("renders via the pool, not directly, passing the fetched bytes/options/labelAnchorCache through", async () => {
-      const pool = { render: vi.fn().mockResolvedValue("<svg>from-pool</svg>"), close: vi.fn() } as unknown as RenderWorkerPool;
-      const service = new PoolTestTilesService(createConfigService({ "tiles.labels": true }), archiveFactory(), pool);
+      const pool = {
+        render: vi.fn().mockResolvedValue("<svg>from-pool</svg>"),
+        close: vi.fn(),
+      } as unknown as RenderWorkerPool;
+      const service = new PoolTestTilesService(
+        createConfigService({ "tiles.labels": true }),
+        archiveFactory(),
+        pool,
+      );
 
       const svg = await service.renderTileSvg(3, 4, 5);
 
@@ -434,27 +522,50 @@ describe("TilesService", () => {
       expect(pool.render).toHaveBeenCalledWith(
         expect.any(Uint8Array),
         expect.objectContaining({ labels: true, zoom: 3, tileX: 4, tileY: 5 }),
-        fakeLabelAnchorCache
+        fakeLabelAnchorCache,
       );
     });
 
     it("maps RenderQueueFullError to a 503", async () => {
-      const pool = { render: vi.fn().mockRejectedValue(new RenderQueueFullError()), close: vi.fn() } as unknown as RenderWorkerPool;
-      const service = new PoolTestTilesService(createConfigService({}), archiveFactory(), pool);
+      const pool = {
+        render: vi.fn().mockRejectedValue(new RenderQueueFullError()),
+        close: vi.fn(),
+      } as unknown as RenderWorkerPool;
+      const service = new PoolTestTilesService(
+        createConfigService({}),
+        archiveFactory(),
+        pool,
+      );
 
-      await expect(service.renderTileSvg(3, 4, 5)).rejects.toBeInstanceOf(ServiceUnavailableException);
+      await expect(service.renderTileSvg(3, 4, 5)).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
     });
 
     it("propagates any other render error unchanged", async () => {
-      const pool = { render: vi.fn().mockRejectedValue(new Error("boom")), close: vi.fn() } as unknown as RenderWorkerPool;
-      const service = new PoolTestTilesService(createConfigService({}), archiveFactory(), pool);
+      const pool = {
+        render: vi.fn().mockRejectedValue(new Error("boom")),
+        close: vi.fn(),
+      } as unknown as RenderWorkerPool;
+      const service = new PoolTestTilesService(
+        createConfigService({}),
+        archiveFactory(),
+        pool,
+      );
 
       await expect(service.renderTileSvg(3, 4, 5)).rejects.toThrow("boom");
     });
 
     it("closes the render pool on module destroy", async () => {
-      const pool = { render: vi.fn(), close: vi.fn().mockResolvedValue(undefined) } as unknown as RenderWorkerPool;
-      const service = new PoolTestTilesService(createConfigService({}), archiveFactory(), pool);
+      const pool = {
+        render: vi.fn(),
+        close: vi.fn().mockResolvedValue(undefined),
+      } as unknown as RenderWorkerPool;
+      const service = new PoolTestTilesService(
+        createConfigService({}),
+        archiveFactory(),
+        pool,
+      );
 
       await service.onModuleInit();
       await service.onModuleDestroy();

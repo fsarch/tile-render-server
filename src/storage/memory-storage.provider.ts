@@ -36,7 +36,11 @@ export class MemoryStorageProvider implements IStorageProvider {
     this.evictIfNeeded();
   }
 
-  async readRange(path: string, offset: number, length: number): Promise<Buffer> {
+  async readRange(
+    path: string,
+    offset: number,
+    length: number,
+  ): Promise<Buffer> {
     const data = await this.readFile(path);
     return data.subarray(offset, offset + length);
   }

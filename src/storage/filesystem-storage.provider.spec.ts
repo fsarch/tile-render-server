@@ -1,7 +1,7 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FileSystemStorageProvider } from "./filesystem-storage.provider.js";
 
 describe("FileSystemStorageProvider", () => {
@@ -27,7 +27,9 @@ describe("FileSystemStorageProvider", () => {
   it("reads a byte range without loading the whole file", async () => {
     await writeFile(join(baseDir, "data.bin"), Buffer.from("0123456789"));
 
-    expect(await provider.readRange("data.bin", 2, 4)).toEqual(Buffer.from("2345"));
+    expect(await provider.readRange("data.bin", 2, 4)).toEqual(
+      Buffer.from("2345"),
+    );
   });
 
   it("exists reflects whether the path is there", async () => {

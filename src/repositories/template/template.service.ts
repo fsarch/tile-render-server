@@ -5,7 +5,10 @@ import { Template } from "../../database/entities/template.entity.js";
 
 @Injectable()
 export class TemplateService {
-  constructor(@InjectRepository(Template) private readonly repository: Repository<Template>) {}
+  constructor(
+    @InjectRepository(Template)
+    private readonly repository: Repository<Template>,
+  ) {}
 
   // The color theme TilesService injects into a rendered tile as the very last step
   // before responding (see injectStyleTemplate in src/core/svg.ts). Resolves to null
@@ -27,7 +30,12 @@ export class TemplateService {
   }
 
   create(name: string, colors: Record<string, string>): Promise<Template> {
-    const entity = this.repository.create({ id: crypto.randomUUID(), name, colors, isActive: false });
+    const entity = this.repository.create({
+      id: crypto.randomUUID(),
+      name,
+      colors,
+      isActive: false,
+    });
     return this.repository.save(entity);
   }
 

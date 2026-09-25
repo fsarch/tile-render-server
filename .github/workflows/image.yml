@@ -7,16 +7,35 @@ on:
       - 'v*'
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: checkout code
-        uses: actions/checkout@v2
-      - name: install buildx
-        id: buildx
-        uses: crazy-max/ghaction-docker-buildx@v1
+        uses: actions/checkout@v7
+      - name: enable corepack
+        run: corepack enable
+      - name: setup node
+        uses: actions/setup-node@v5
         with:
-          version: latest
+          node-version: 24
+          cache: pnpm
+      - name: install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: run unit tests
+        run: pnpm run test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v7
+      # https://github.com/docker/setup-qemu-action
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+      # https://github.com/docker/setup-buildx-action
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
       - name: login to docker hub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
       - name: determine image tags
@@ -39,6 +58,13 @@ jobs:
             echo "stable=false" >> "$GITHUB_OUTPUT"
           fi
           echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          # Same tags, "-distroless" suffixed, for the Dockerfile.distroless
+          # build below (e.g. fsarch/tile-render-server:1.2.3-distroless).
+          DISTROLESS_TAGS=""
+          for tag in ${TAGS}; do
+            DISTROLESS_TAGS="${DISTROLESS_TAGS} ${tag}-distroless"
+          done
+          echo "distroless_tags=${DISTROLESS_TAGS}" >> "$GITHUB_OUTPUT"
       - name: build the image
         run: |
           TAG_ARGS=""
@@ -49,6 +75,22 @@ jobs:
           docker buildx build \
             ${TAG_ARGS} \
             --platform linux/amd64,linux/arm64 \
+            --push .
+      - name: build the distroless image
+        # Only for tagged releases, not every push to main (no :latest
+        # counterpart - avoids doubling the build for the mainline "just
+        # verify it still builds/pushes" case).
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG_ARGS=""
+          for tag in ${{ steps.image.outputs.distroless_tags }}; do
+            TAG_ARGS="${TAG_ARGS} --tag ${tag}"
+          done
+
+          docker buildx build \
+            ${TAG_ARGS} \
+            --platform linux/amd64,linux/arm64 \
+            --file Dockerfile.distroless \
             --push .
       - name: notify helm-charts of the new release
         # success() is required here because a custom `if:` replaces the

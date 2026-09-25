@@ -36,7 +36,10 @@ export class InMemoryLabelAnchorCache implements LabelAnchorCache {
     return this.store.get(toCacheKey(key));
   }
 
-  async set(key: LabelAnchorKey, value: GlobalAreaAnchor | null): Promise<void> {
+  async set(
+    key: LabelAnchorKey,
+    value: GlobalAreaAnchor | null,
+  ): Promise<void> {
     this.store.set(toCacheKey(key), value);
   }
 }

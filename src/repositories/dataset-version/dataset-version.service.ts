@@ -6,7 +6,8 @@ import { DatasetVersion } from "../../database/entities/dataset-version.entity.j
 @Injectable()
 export class DatasetVersionService {
   constructor(
-    @InjectRepository(DatasetVersion) private readonly repository: Repository<DatasetVersion>
+    @InjectRepository(DatasetVersion)
+    private readonly repository: Repository<DatasetVersion>,
   ) {}
 
   // The row TilesService opens its PMTiles archive from (see src/controllers/tiles/
@@ -21,7 +22,11 @@ export class DatasetVersionService {
   }
 
   create(path: string): Promise<DatasetVersion> {
-    const entity = this.repository.create({ id: crypto.randomUUID(), path, isActive: false });
+    const entity = this.repository.create({
+      id: crypto.randomUUID(),
+      path,
+      isActive: false,
+    });
     return this.repository.save(entity);
   }
 
@@ -31,8 +36,16 @@ export class DatasetVersionService {
   // guards against the latter at the DB level).
   async activate(id: string): Promise<DatasetVersion> {
     return this.repository.manager.transaction(async (manager) => {
-      await manager.update(DatasetVersion, { isActive: true }, { isActive: false });
-      const result = await manager.update(DatasetVersion, { id }, { isActive: true });
+      await manager.update(
+        DatasetVersion,
+        { isActive: true },
+        { isActive: false },
+      );
+      const result = await manager.update(
+        DatasetVersion,
+        { id },
+        { isActive: true },
+      );
       if (!result.affected) {
         throw new NotFoundException(`DatasetVersion "${id}" not found`);
       }

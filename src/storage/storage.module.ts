@@ -1,6 +1,9 @@
 import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { CacheStorageConfig, StorageConfig } from "./storage-config.types.js";
+import type {
+  CacheStorageConfig,
+  StorageConfig,
+} from "./storage-config.types.js";
 import { StorageProviderFactory } from "./storage-provider.factory.js";
 import type { IStorageProvider } from "./storage-provider.interface.js";
 

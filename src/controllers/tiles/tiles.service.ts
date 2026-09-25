@@ -1,21 +1,38 @@
-import { NotFoundException, ServiceUnavailableException, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import { withSpan } from "@fsarch/server/tracing";
 import { availableParallelism } from "node:os";
 import { dirname } from "node:path";
-import { TRACER_NAME } from "../../tracing.js";
+import { withSpan } from "@fsarch/server/tracing";
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { computeOverzoomTransform } from "../../core/geometry.js";
-import { openPMTilesArchiveFromStorage, type LocalPMTilesArchive } from "../../core/pmtiles.js";
+import type { LabelAnchorCache } from "../../core/label-anchor-cache.js";
+import {
+  type LocalPMTilesArchive,
+  openPMTilesArchiveFromStorage,
+} from "../../core/pmtiles.js";
 import type { RenderOptions } from "../../core/renderer.js";
 import { injectStyleTemplate } from "../../core/svg.js";
-import type { LabelAnchorCache } from "../../core/label-anchor-cache.js";
-import { PostgresLabelAnchorCache } from "../../repositories/label-anchor/label-anchor-cache.postgres.js";
 import { DatasetVersionService } from "../../repositories/dataset-version/dataset-version.service.js";
+import { PostgresLabelAnchorCache } from "../../repositories/label-anchor/label-anchor-cache.postgres.js";
 import { TemplateService } from "../../repositories/template/template.service.js";
-import { CACHE_STORAGE_PROVIDER, DATA_STORAGE_PROVIDER } from "../../storage/storage.module.js";
-import type { IStorageProvider } from "../../storage/storage-provider.interface.js";
+import {
+  CACHE_STORAGE_PROVIDER,
+  DATA_STORAGE_PROVIDER,
+} from "../../storage/storage.module.js";
 import type { StorageConfig } from "../../storage/storage-config.types.js";
-import { RenderQueueFullError, RenderWorkerPool } from "./render-worker-pool.js";
+import type { IStorageProvider } from "../../storage/storage-provider.interface.js";
+import { TRACER_NAME } from "../../tracing.js";
+import {
+  RenderQueueFullError,
+  RenderWorkerPool,
+} from "./render-worker-pool.js";
 
 type TileArchive = Pick<LocalPMTilesArchive, "close" | "getHeader" | "getTile">;
 
@@ -39,8 +56,10 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
     private readonly labelAnchorCache: PostgresLabelAnchorCache,
     private readonly datasetVersionService: DatasetVersionService,
     private readonly templateService: TemplateService,
-    @Inject(DATA_STORAGE_PROVIDER) private readonly dataStorage: IStorageProvider,
-    @Inject(CACHE_STORAGE_PROVIDER) private readonly cacheStorage: IStorageProvider
+    @Inject(DATA_STORAGE_PROVIDER)
+    private readonly dataStorage: IStorageProvider,
+    @Inject(CACHE_STORAGE_PROVIDER)
+    private readonly cacheStorage: IStorageProvider,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -49,14 +68,20 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    const archive = this.archive ?? (this.archivePromise ? await this.archivePromise : undefined);
+    const archive =
+      this.archive ??
+      (this.archivePromise ? await this.archivePromise : undefined);
     this.archive = undefined;
     this.archivePromise = undefined;
     if (archive) {
       await archive.close();
     }
 
-    const pool = this.renderPool ?? (this.renderPoolPromise ? await this.renderPoolPromise.catch(() => undefined) : undefined);
+    const pool =
+      this.renderPool ??
+      (this.renderPoolPromise
+        ? await this.renderPoolPromise.catch(() => undefined)
+        : undefined);
     this.renderPool = undefined;
     this.renderPoolPromise = undefined;
     if (pool) {
@@ -66,7 +91,9 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
 
   getCacheControl(): string {
     const value = this.configService.get<string>("tiles.cacheControl");
-    return value && value.trim().length > 0 ? value.trim() : "public, max-age=3600";
+    return value && value.trim().length > 0
+      ? value.trim()
+      : "public, max-age=3600";
   }
 
   // Wrapped in one root span per request ("tiles.render") so a trace shows the full
@@ -75,7 +102,12 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
   // RenderWorkerPool for the more granular spans underneath). Safe to leave in place
   // unconditionally: with tracing disabled/uninitialized this runs against
   // OpenTelemetry's no-op tracer (see src/tracing.ts).
-  async renderTileSvg(z: number, x: number, y: number, templateId?: string): Promise<string> {
+  async renderTileSvg(
+    z: number,
+    x: number,
+    y: number,
+    templateId?: string,
+  ): Promise<string> {
     return withSpan(
       "tiles.render",
       async () => {
@@ -85,7 +117,13 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
           throw new NotFoundException(`Tile ${z}/${x}/${y} is not available`);
         }
 
-        const svg = await this.renderOrGetCached(archive, datasetMaxZoom, z, x, y);
+        const svg = await this.renderOrGetCached(
+          archive,
+          datasetMaxZoom,
+          z,
+          x,
+          y,
+        );
 
         // Styling is a separate, cheap step from rendering (see injectStyleTemplate):
         // looked up fresh on every request (unlike the dataset path above, which is
@@ -107,7 +145,7 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
             }
             return injectStyleTemplate(svg, template?.colors);
           },
-          { tracerName: TRACER_NAME }
+          { tracerName: TRACER_NAME },
         );
       },
       {
@@ -118,7 +156,7 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
           "tile.y": y,
           ...(templateId ? { "tile.template_id": templateId } : {}),
         },
-      }
+      },
     );
   }
 
@@ -130,7 +168,7 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
     datasetMaxZoom: number,
     z: number,
     x: number,
-    y: number
+    y: number,
   ): Promise<string> {
     const cacheKey = `${this.datasetVersionId}/${z}/${x}/${y}.svg`;
 
@@ -139,9 +177,11 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
       async (span) => {
         const hit = await this.cacheStorage.exists(cacheKey);
         span.setAttribute("cache.hit", hit);
-        return hit ? (await this.cacheStorage.readFile(cacheKey)).toString("utf8") : undefined;
+        return hit
+          ? (await this.cacheStorage.readFile(cacheKey)).toString("utf8")
+          : undefined;
       },
-      { tracerName: TRACER_NAME, attributes: { "cache.key": cacheKey } }
+      { tracerName: TRACER_NAME, attributes: { "cache.key": cacheKey } },
     );
     if (cached !== undefined) {
       return cached;
@@ -150,14 +190,23 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
     // Beyond datasetMaxZoom, there's no real data for (z, x, y) - fetch the deepest
     // real ancestor tile instead and let renderSvg's overzoom transform below crop and
     // scale its geometry to stand in for the requested tile.
-    const { sourceZoom, sourceX, sourceY } = computeOverzoomTransform(z, x, y, datasetMaxZoom);
+    const { sourceZoom, sourceX, sourceY } = computeOverzoomTransform(
+      z,
+      x,
+      y,
+      datasetMaxZoom,
+    );
     const tileData = await withSpan(
       "tiles.render.fetch_source_tile",
       () => archive.getTile(sourceZoom, sourceX, sourceY),
       {
         tracerName: TRACER_NAME,
-        attributes: { "tile.source_z": sourceZoom, "tile.source_x": sourceX, "tile.source_y": sourceY },
-      }
+        attributes: {
+          "tile.source_z": sourceZoom,
+          "tile.source_x": sourceX,
+          "tile.source_y": sourceY,
+        },
+      },
     );
     if (!tileData || tileData.byteLength === 0) {
       throw new NotFoundException(`Tile ${z}/${x}/${y} is empty or missing`);
@@ -178,9 +227,9 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
             datasetMaxZoom,
           },
           archive,
-          this.labelAnchorCache
+          this.labelAnchorCache,
         ),
-      { tracerName: TRACER_NAME }
+      { tracerName: TRACER_NAME },
     );
 
     if (!svg) {
@@ -193,7 +242,7 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
         await this.cacheStorage.mkdir(dirname(cacheKey), { recursive: true });
         await this.cacheStorage.writeFile(cacheKey, Buffer.from(svg, "utf8"));
       },
-      { tracerName: TRACER_NAME, attributes: { "cache.key": cacheKey } }
+      { tracerName: TRACER_NAME, attributes: { "cache.key": cacheKey } },
     );
     return svg;
   }
@@ -203,7 +252,9 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
   // the dataset's real max zoom, never shrink it below what's actually available.
   private getServingMaxZoom(datasetMaxZoom: number): number {
     const configured = Number(this.configService.get<unknown>("tiles.maxZoom"));
-    return Number.isInteger(configured) ? Math.max(configured, datasetMaxZoom) : datasetMaxZoom;
+    return Number.isInteger(configured)
+      ? Math.max(configured, datasetMaxZoom)
+      : datasetMaxZoom;
   }
 
   private async getArchive(): Promise<TileArchive> {
@@ -238,13 +289,15 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
   // to config. Re-thrown with `cause` so the original error (name, $metadata, stack)
   // is never lost, just annotated - see main.ts's bootstrap error logging, which walks
   // the full `cause` chain.
-  private async openArchiveWithContext(inputPath: string): Promise<TileArchive> {
+  private async openArchiveWithContext(
+    inputPath: string,
+  ): Promise<TileArchive> {
     try {
       return await this.openArchive(inputPath);
     } catch (error) {
       throw new Error(
         `Failed to open PMTiles archive for dataset_version ${this.datasetVersionId} at path "${inputPath}": ${error instanceof Error ? error.message : String(error)}`,
-        { cause: error }
+        { cause: error },
       );
     }
   }
@@ -260,7 +313,7 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
     tileBuffer: ArrayBuffer | Uint8Array,
     options: RenderOptions,
     _archive: TileArchive,
-    labelAnchorCache: LabelAnchorCache
+    labelAnchorCache: LabelAnchorCache,
   ): Promise<string | null> {
     const pool = await this.getRenderPool();
     try {
@@ -302,11 +355,15 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Missing "storage.data" in config.yaml');
     }
     if (!this.inputPath) {
-      throw new Error("createRenderPool called before the input path was resolved");
+      throw new Error(
+        "createRenderPool called before the input path was resolved",
+      );
     }
 
     const { concurrency, source } = this.resolveRenderConcurrency();
-    this.logger.log(`Starting render worker pool with concurrency=${concurrency} (${source})`);
+    this.logger.log(
+      `Starting render worker pool with concurrency=${concurrency} (${source})`,
+    );
 
     return new RenderWorkerPool({
       storageConfig,
@@ -328,12 +385,17 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
   // number was picked, since availableParallelism() reflects the container's own cgroup
   // CPU quota under k8s, not necessarily the host's full core count.
   private resolveRenderConcurrency(): { concurrency: number; source: string } {
-    const configured = Number(this.configService.get<unknown>("tiles.renderConcurrency"));
+    const configured = Number(
+      this.configService.get<unknown>("tiles.renderConcurrency"),
+    );
     if (Number.isInteger(configured) && configured > 0) {
       return { concurrency: configured, source: "tiles.renderConcurrency" };
     }
     const cpuCount = availableParallelism();
-    return { concurrency: Math.max(1, Math.min(8, cpuCount)), source: `default, availableParallelism()=${cpuCount}` };
+    return {
+      concurrency: Math.max(1, Math.min(8, cpuCount)),
+      source: `default, availableParallelism()=${cpuCount}`,
+    };
   }
 
   // The pmtiles path comes exclusively from the dataset_versions table now (see
@@ -348,7 +410,7 @@ export class TilesService implements OnModuleInit, OnModuleDestroy {
     const activeVersion = await this.datasetVersionService.getActive();
     if (!activeVersion || activeVersion.path.trim().length === 0) {
       throw new Error(
-        "No active dataset_version configured - insert a row into the dataset_versions table and set is_active = true"
+        "No active dataset_version configured - insert a row into the dataset_versions table and set is_active = true",
       );
     }
     this.datasetVersionId = activeVersion.id;

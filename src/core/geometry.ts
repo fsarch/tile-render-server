@@ -23,7 +23,10 @@ export interface PointGeometry {
   points: Point2D[];
 }
 
-export type NormalizedGeometry = PolygonGeometry | LineStringGeometry | PointGeometry;
+export type NormalizedGeometry =
+  | PolygonGeometry
+  | LineStringGeometry
+  | PointGeometry;
 
 function toTileCoord(value: number, extent: number): number {
   return (value / extent) * TILE_SIZE;
@@ -52,10 +55,17 @@ export function computeOverzoomTransform(
   z: number,
   x: number,
   y: number,
-  maxZoom: number
+  maxZoom: number,
 ): OverzoomTransform {
   if (!Number.isFinite(maxZoom) || z <= maxZoom) {
-    return { sourceZoom: z, sourceX: x, sourceY: y, scale: 1, offsetX: 0, offsetY: 0 };
+    return {
+      sourceZoom: z,
+      sourceX: x,
+      sourceY: y,
+      scale: 1,
+      offsetX: 0,
+      offsetY: 0,
+    };
   }
   const shift = z - maxZoom;
   const scale = 2 ** shift;
@@ -99,7 +109,7 @@ export function getPolygonArea(rings: Point2D[][]): number {
 export function decodeFeatureGeometry(
   feature: VectorTileFeature,
   extent = DEFAULT_EXTENT,
-  overzoom?: OverzoomTransform
+  overzoom?: OverzoomTransform,
 ): NormalizedGeometry | null {
   if (!feature || typeof feature.loadGeometry !== "function") return null;
   const geometry = feature.loadGeometry();
@@ -116,7 +126,7 @@ export function decodeFeatureGeometry(
           y = (y - crop.offsetY) * crop.scale;
         }
         return { x, y };
-      })
+      }),
     )
     .filter((line) => line.length > 0);
 
@@ -135,7 +145,9 @@ export function decodeFeatureGeometry(
   }
 
   if (feature.type === 1) {
-    const points = normalized.flat().filter((point) => Number.isFinite(point.x));
+    const points = normalized
+      .flat()
+      .filter((point) => Number.isFinite(point.x));
     if (points.length === 0) return null;
     return { kind: "Point", points };
   }
@@ -143,14 +155,20 @@ export function decodeFeatureGeometry(
   return null;
 }
 
-function perpendicularDistance(point: Point2D, lineStart: Point2D, lineEnd: Point2D): number {
+function perpendicularDistance(
+  point: Point2D,
+  lineStart: Point2D,
+  lineEnd: Point2D,
+): number {
   const dx = lineEnd.x - lineStart.x;
   const dy = lineEnd.y - lineStart.y;
   const lengthSquared = dx * dx + dy * dy;
   if (lengthSquared === 0) {
     return Math.hypot(point.x - lineStart.x, point.y - lineStart.y);
   }
-  const t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lengthSquared;
+  const t =
+    ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) /
+    lengthSquared;
   const clampedT = Math.max(0, Math.min(1, t));
   const projectedX = lineStart.x + clampedT * dx;
   const projectedY = lineStart.y + clampedT * dy;
@@ -199,7 +217,7 @@ export function getLabelAnchor(geometry: NormalizedGeometry): Point2D | null {
   }
 
   const outer = [...geometry.rings].sort(
-    (a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a))
+    (a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)),
   )[0];
   if (!outer || outer.length === 0) return null;
   let x = 0;

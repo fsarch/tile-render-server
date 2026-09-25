@@ -43,11 +43,20 @@ describe("PostgresLabelAnchorCache", () => {
     const cache = new PostgresLabelAnchorCache(repository as never);
     cache.setDatasetVersionId(DATASET_VERSION_ID);
 
-    await cache.set({ sourceLayer: "park", featureId: "123" }, { fx: 0.1, fy: 0.9 });
+    await cache.set(
+      { sourceLayer: "park", featureId: "123" },
+      { fx: 0.1, fy: 0.9 },
+    );
 
     expect(upsert).toHaveBeenCalledWith(
-      { sourceLayer: "park", featureId: "123", datasetVersion: DATASET_VERSION_ID, fx: 0.1, fy: 0.9 },
-      ["sourceLayer", "featureId", "datasetVersion"]
+      {
+        sourceLayer: "park",
+        featureId: "123",
+        datasetVersion: DATASET_VERSION_ID,
+        fx: 0.1,
+        fy: 0.9,
+      },
+      ["sourceLayer", "featureId", "datasetVersion"],
     );
   });
 
@@ -66,8 +75,8 @@ describe("PostgresLabelAnchorCache", () => {
     const repository = { findOneBy: vi.fn(), upsert: vi.fn() };
     const cache = new PostgresLabelAnchorCache(repository as never);
 
-    await expect(cache.get({ sourceLayer: "park", featureId: "123" })).rejects.toThrow(
-      "setDatasetVersionId"
-    );
+    await expect(
+      cache.get({ sourceLayer: "park", featureId: "123" }),
+    ).rejects.toThrow("setDatasetVersionId");
   });
 });

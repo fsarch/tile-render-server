@@ -1,4 +1,10 @@
-import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from "typeorm";
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryColumn,
+  UpdateDateColumn,
+} from "typeorm";
 
 // Registers a known planet.pmtiles build the REST API can serve. Replaces the old
 // `tiles.input` config.yaml setting entirely: TilesService opens whichever row has

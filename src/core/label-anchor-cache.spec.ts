@@ -4,7 +4,9 @@ import { InMemoryLabelAnchorCache } from "./label-anchor-cache.js";
 describe("InMemoryLabelAnchorCache", () => {
   it("returns undefined for a key that was never set (cache miss)", async () => {
     const cache = new InMemoryLabelAnchorCache();
-    expect(await cache.get({ sourceLayer: "park", featureId: "1" })).toBeUndefined();
+    expect(
+      await cache.get({ sourceLayer: "park", featureId: "1" }),
+    ).toBeUndefined();
   });
 
   it("round-trips a resolved anchor", async () => {
@@ -23,20 +25,43 @@ describe("InMemoryLabelAnchorCache", () => {
 
   it("isolates keys by sourceLayer even when featureId is identical", async () => {
     const cache = new InMemoryLabelAnchorCache();
-    await cache.set({ sourceLayer: "park", featureId: "1" }, { fx: 0.1, fy: 0.1 });
-    await cache.set({ sourceLayer: "water_name", featureId: "1" }, { fx: 0.9, fy: 0.9 });
+    await cache.set(
+      { sourceLayer: "park", featureId: "1" },
+      { fx: 0.1, fy: 0.1 },
+    );
+    await cache.set(
+      { sourceLayer: "water_name", featureId: "1" },
+      { fx: 0.9, fy: 0.9 },
+    );
 
-    expect(await cache.get({ sourceLayer: "park", featureId: "1" })).toEqual({ fx: 0.1, fy: 0.1 });
-    expect(await cache.get({ sourceLayer: "water_name", featureId: "1" })).toEqual({ fx: 0.9, fy: 0.9 });
+    expect(await cache.get({ sourceLayer: "park", featureId: "1" })).toEqual({
+      fx: 0.1,
+      fy: 0.1,
+    });
+    expect(
+      await cache.get({ sourceLayer: "water_name", featureId: "1" }),
+    ).toEqual({ fx: 0.9, fy: 0.9 });
   });
 
   it("isolates keys by featureId even when sourceLayer is identical", async () => {
     const cache = new InMemoryLabelAnchorCache();
-    await cache.set({ sourceLayer: "park", featureId: "1" }, { fx: 0.1, fy: 0.1 });
-    await cache.set({ sourceLayer: "park", featureId: "2" }, { fx: 0.9, fy: 0.9 });
+    await cache.set(
+      { sourceLayer: "park", featureId: "1" },
+      { fx: 0.1, fy: 0.1 },
+    );
+    await cache.set(
+      { sourceLayer: "park", featureId: "2" },
+      { fx: 0.9, fy: 0.9 },
+    );
 
-    expect(await cache.get({ sourceLayer: "park", featureId: "1" })).toEqual({ fx: 0.1, fy: 0.1 });
-    expect(await cache.get({ sourceLayer: "park", featureId: "2" })).toEqual({ fx: 0.9, fy: 0.9 });
+    expect(await cache.get({ sourceLayer: "park", featureId: "1" })).toEqual({
+      fx: 0.1,
+      fy: 0.1,
+    });
+    expect(await cache.get({ sourceLayer: "park", featureId: "2" })).toEqual({
+      fx: 0.9,
+      fy: 0.9,
+    });
   });
 
   it("overwrites a previously stored value for the same key", async () => {

@@ -5,11 +5,12 @@
 
 ## REST API
 
-1. `npm install`
-2. `cp config.example.yaml config.yaml` und die `database:`-Zugangsdaten eintragen (siehe [Datenbank](#datenbank))
-3. `npm run build`
-4. Eine aktive `dataset_versions`-Zeile anlegen (siehe [Datasets und Themes](#datasets-und-themes)) — ohne sie startet die API nicht
-5. `npm start`
+1. `corepack enable` (einmalig — aktiviert pnpm in der vom `packageManager`-Feld gepinnten Version)
+2. `pnpm install`
+3. `cp config.example.yaml config.yaml` und die `database:`-Zugangsdaten eintragen (siehe [Datenbank](#datenbank))
+4. `pnpm run build`
+5. Eine aktive `dataset_versions`-Zeile anlegen (siehe [Datasets und Themes](#datasets-und-themes)) — ohne sie startet die API nicht
+6. `pnpm start`
 
 Standardroute:
 
@@ -33,9 +34,9 @@ Die Laufzeitkonfiguration liegt in `config.yaml` (gitignored, nie committen — 
 
 ## Datenbank
 
-`npm start` (die REST-API) benötigt eine erreichbare Postgres-Datenbank — nicht für die Kartendaten selbst (die kommen weiterhin ausschließlich aus `planet.pmtiles`), sondern als geteilter, persistenter Cache für kachelübergreifend aufgelöste Label-Positionen (z. B. große Naturschutzgebiete, die über viele Kacheln verteilt sind). Migrationen laufen beim Start automatisch (`migrationsRun: true`).
+`pnpm start` (die REST-API) benötigt eine erreichbare Postgres-Datenbank — nicht für die Kartendaten selbst (die kommen weiterhin ausschließlich aus `planet.pmtiles`), sondern als geteilter, persistenter Cache für kachelübergreifend aufgelöste Label-Positionen (z. B. große Naturschutzgebiete, die über viele Kacheln verteilt sind). Migrationen laufen beim Start automatisch (`migrationsRun: true`).
 
-`npm test` und `npm run render` (Batch-CLI) benötigen **keine** Datenbank.
+`pnpm test` und `pnpm run render` (Batch-CLI) benötigen **keine** Datenbank.
 
 ```yaml
 database:
@@ -124,7 +125,7 @@ Eigene Spans (`withSpan`/`@Span` aus `@fsarch/server/tracing`) sind bereits fest
 - `tiles.render` (Root-Span pro Request) → `tiles.render.cache_lookup`, `tiles.render.fetch_source_tile`, `tiles.render.render_svg`, `tiles.render.cache_write`, `tiles.render.apply_template`
 - `render_worker_pool.render` (unter `tiles.render.render_svg`) trägt `queue.wait_ms` und `worker.render_ms` als Attribute — damit lässt sich direkt sehen, ob ein langsamer Request an der eigentlichen Renderzeit oder an einem überlasteten Worker-Pool liegt (siehe `tiles.renderConcurrency`).
 
-Diese eigenen Spans funktionieren bereits mit `npm start`/`npm run build && node dist/main.js`, ganz ohne weiteres Setup — `FsArchAppBuilder.build()` initialisiert den OpenTelemetry-SDK selbst. Für die generischen Auto-Instrumentierungs-Spans (HTTP/Express/Postgres) muss der Prozess zusätzlich mit dem Preload gestartet werden (im `Dockerfile` bereits per `NODE_OPTIONS` gesetzt):
+Diese eigenen Spans funktionieren bereits mit `pnpm start`/`pnpm run build && node dist/main.js`, ganz ohne weiteres Setup — `FsArchAppBuilder.build()` initialisiert den OpenTelemetry-SDK selbst. Für die generischen Auto-Instrumentierungs-Spans (HTTP/Express/Postgres) muss der Prozess zusätzlich mit dem Preload gestartet werden (im `Dockerfile` bereits per `NODE_OPTIONS` gesetzt):
 
 ```bash
 node --import @fsarch/server/register dist/main.js
@@ -183,7 +184,7 @@ psql "$DATABASE_URL" -f src/database/seeds/activate-template.sql
 ## Example Viewer
 
 ```bash
-npm run example
+pnpm run example
 ```
 
 Der Viewer lädt Tiles über `GET /v1/tiles/:z/:x/:y.svg` vom API-Server und kann bei Bedarf mit `--api-base` auf eine andere URL zeigen.

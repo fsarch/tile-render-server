@@ -1,4 +1,10 @@
-import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from "typeorm";
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryColumn,
+  UpdateDateColumn,
+} from "typeorm";
 
 // Persisted, shared cache of resolved cross-tile label anchor positions (see
 // src/label-anchor-cache.ts and the "ID vs name" section of REQUIREMENTS.md §9).

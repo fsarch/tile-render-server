@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { StorageSource } from "./pmtiles.js";
 import type { IStorageProvider } from "../storage/storage-provider.interface.js";
+import { StorageSource } from "./pmtiles.js";
 
-function fakeStorage(readRange: IStorageProvider["readRange"]): IStorageProvider {
+function fakeStorage(
+  readRange: IStorageProvider["readRange"],
+): IStorageProvider {
   return {
     readRange,
     readFile: vi.fn(),
@@ -21,7 +23,10 @@ describe("StorageSource", () => {
 
   it("delegates getBytes to storage.readRange with the requested offset/length", async () => {
     const readRange = vi.fn().mockResolvedValue(Buffer.from([1, 2, 3, 4]));
-    const source = new StorageSource(fakeStorage(readRange), "some/key.pmtiles");
+    const source = new StorageSource(
+      fakeStorage(readRange),
+      "some/key.pmtiles",
+    );
 
     await source.getBytes(100, 4);
 
@@ -30,7 +35,10 @@ describe("StorageSource", () => {
 
   it("returns the bytes as a plain ArrayBuffer, not tied to the source Buffer's backing memory", async () => {
     const backing = Buffer.from([1, 2, 3, 4]);
-    const source = new StorageSource(fakeStorage(vi.fn().mockResolvedValue(backing)), "k");
+    const source = new StorageSource(
+      fakeStorage(vi.fn().mockResolvedValue(backing)),
+      "k",
+    );
 
     const result = await source.getBytes(0, 4);
 

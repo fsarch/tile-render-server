@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { buildSvgDocument, injectStyleTemplate, renderGeometryElements, renderLabelElement } from "./svg.js";
+import {
+  buildSvgDocument,
+  injectStyleTemplate,
+  renderGeometryElements,
+  renderLabelElement,
+} from "./svg.js";
 
 describe("buildSvgDocument", () => {
   it("places label overlay after the map layers", () => {
-    const svg = buildSvgDocument(new Map([["roads", "<path id='road' />"]]), "<text id='label' />");
+    const svg = buildSvgDocument(
+      new Map([["roads", "<path id='road' />"]]),
+      "<text id='label' />",
+    );
 
-    expect(svg.indexOf("<g id=\"roads\">")).toBeLessThan(svg.indexOf("<g id=\"labels\">"));
+    expect(svg.indexOf('<g id="roads">')).toBeLessThan(
+      svg.indexOf('<g id="labels">'),
+    );
     expect(svg).toContain("<g id=\"labels\"><text id='label' /></g>");
   });
 
@@ -14,14 +24,14 @@ describe("buildSvgDocument", () => {
       { kind: "Point", points: [{ x: 12, y: 34 }] },
       { fill: "#000", r: 2 },
       "place",
-      { "data-id": "feature-123", "data-protect-class": "4" }
+      { "data-id": "feature-123", "data-protect-class": "4" },
     );
     const label = renderLabelElement(
       { x: 12, y: 34 },
       "Test",
       "place",
       { fill: "#000" },
-      { "data-id": "feature-123", "data-protect-class": "4" }
+      { "data-id": "feature-123", "data-protect-class": "4" },
     );
 
     expect(geometry[0]).toContain('data-id="feature-123"');
@@ -41,15 +51,22 @@ describe("injectStyleTemplate", () => {
   });
 
   it("inserts a :root style block with known variables right after the opening <svg> tag", () => {
-    const result = injectStyleTemplate(baseSvg, { "--map-water": "#123456", "--road-primary": "rgb(1,2,3)" });
+    const result = injectStyleTemplate(baseSvg, {
+      "--map-water": "#123456",
+      "--road-primary": "rgb(1,2,3)",
+    });
 
-    expect(result).toContain("<style>:root{--map-water:#123456;--road-primary:rgb(1,2,3);}</style>");
+    expect(result).toContain(
+      "<style>:root{--map-water:#123456;--road-primary:rgb(1,2,3);}</style>",
+    );
     expect(result.indexOf("<style>")).toBeLessThan(result.indexOf("<rect"));
     expect(result.indexOf("<svg")).toBeLessThan(result.indexOf("<style>"));
   });
 
   it("ignores unknown variable names (not in THEMEABLE_COLOR_VARIABLES)", () => {
-    const result = injectStyleTemplate(baseSvg, { "--not-a-real-variable": "#123456" });
+    const result = injectStyleTemplate(baseSvg, {
+      "--not-a-real-variable": "#123456",
+    });
     expect(result).toBe(baseSvg);
   });
 
@@ -66,6 +83,8 @@ describe("injectStyleTemplate", () => {
 
   it("leaves the rest of the document byte-for-byte identical", () => {
     const result = injectStyleTemplate(baseSvg, { "--map-water": "#123456" });
-    expect(result.replace("<style>:root{--map-water:#123456;}</style>", "")).toBe(baseSvg);
+    expect(
+      result.replace("<style>:root{--map-water:#123456;}</style>", ""),
+    ).toBe(baseSvg);
   });
 });

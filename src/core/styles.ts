@@ -49,7 +49,10 @@ export const THEMEABLE_COLOR_VARIABLES = [
 
 export type ThemeableColorVariable = (typeof THEMEABLE_COLOR_VARIABLES)[number];
 
-function themedColor(variable: ThemeableColorVariable, fallback: string): string {
+function themedColor(
+  variable: ThemeableColorVariable,
+  fallback: string,
+): string {
   return `var(${variable}, ${fallback})`;
 }
 
@@ -124,13 +127,32 @@ const NATURE_LABEL_STYLES = {
 const LAYER_STYLES: Record<LayerName, LayerStyleDef> = {
   water: {
     polygon: { fill: themedColor("--map-water", "#9ecfff"), stroke: "none" },
-    line: { stroke: themedColor("--map-water", "#7bb7ef"), "stroke-width": 1, fill: "none" },
-    point: { fill: themedColor("--map-water", "#7bb7ef"), stroke: "none", r: 1.5 },
+    line: {
+      stroke: themedColor("--map-water", "#7bb7ef"),
+      "stroke-width": 1,
+      fill: "none",
+    },
+    point: {
+      fill: themedColor("--map-water", "#7bb7ef"),
+      stroke: "none",
+      r: 1.5,
+    },
   },
   land: {
-    polygon: { fill: themedColor("--map-background", "#f5f3e7"), stroke: "none" },
-    line: { stroke: themedColor("--map-background", "#e8e0cb"), "stroke-width": 1, fill: "none" },
-    point: { fill: themedColor("--map-background", "#e8e0cb"), stroke: "none", r: 1.5 },
+    polygon: {
+      fill: themedColor("--map-background", "#f5f3e7"),
+      stroke: "none",
+    },
+    line: {
+      stroke: themedColor("--map-background", "#e8e0cb"),
+      "stroke-width": 1,
+      fill: "none",
+    },
+    point: {
+      fill: themedColor("--map-background", "#e8e0cb"),
+      stroke: "none",
+      r: 1.5,
+    },
   },
   roads: {
     line: {
@@ -191,8 +213,16 @@ const LAYER_STYLES: Record<LayerName, LayerStyleDef> = {
   },
   landuse: {
     polygon: { fill: themedColor("--map-landuse", "#cfe7b9"), stroke: "none" },
-    line: { stroke: themedColor("--map-landuse", "#aacd95"), "stroke-width": 1, fill: "none" },
-    point: { fill: themedColor("--map-landuse", "#aacd95"), stroke: "none", r: 1.4 },
+    line: {
+      stroke: themedColor("--map-landuse", "#aacd95"),
+      "stroke-width": 1,
+      fill: "none",
+    },
+    point: {
+      fill: themedColor("--map-landuse", "#aacd95"),
+      stroke: "none",
+      r: 1.4,
+    },
   },
 };
 
@@ -254,7 +284,12 @@ function roadWidthFromClass(value: string, fallback: number): number {
   if (value === "secondary") return 2.1;
   if (value === "tertiary") return 1.8;
   if (value === "minor") return 1.5;
-  if (value === "residential" || value === "unclassified" || value === "service") return 1.4;
+  if (
+    value === "residential" ||
+    value === "unclassified" ||
+    value === "service"
+  )
+    return 1.4;
   if (value === "track" || value === "path") return 0.6;
   return fallback;
 }
@@ -265,7 +300,10 @@ const LOW_ZOOM_ROAD_WIDTH_MAX_ZOOM = 11;
 const LOW_ZOOM_ROAD_WIDTH_SCALE = 0.6;
 
 function roadWidthZoomScale(zoom?: number): number {
-  if (Number.isInteger(zoom) && (zoom as number) < LOW_ZOOM_ROAD_WIDTH_MAX_ZOOM) {
+  if (
+    Number.isInteger(zoom) &&
+    (zoom as number) < LOW_ZOOM_ROAD_WIDTH_MAX_ZOOM
+  ) {
     return LOW_ZOOM_ROAD_WIDTH_SCALE;
   }
   return 1;
@@ -286,9 +324,18 @@ const ROAD_VARIANT_STYLES: Record<string, SvgStyle> = {
   residential: { stroke: themedColor("--road-minor", "#ffffff") },
   unclassified: { stroke: themedColor("--road-minor", "#ffffff") },
   service: { stroke: themedColor("--road-minor", "#c7b8a0") },
-  track: { stroke: themedColor("--road-minor", "#8fb784"), "stroke-dasharray": "1.5 1.3" },
-  path: { stroke: themedColor("--road-minor", "#c8beaf"), "stroke-dasharray": "1.5 1.3" },
-  ferry: { stroke: themedColor("--road-minor", "#3f8fd6"), "stroke-dasharray": "3 2" },
+  track: {
+    stroke: themedColor("--road-minor", "#8fb784"),
+    "stroke-dasharray": "1.5 1.3",
+  },
+  path: {
+    stroke: themedColor("--road-minor", "#c8beaf"),
+    "stroke-dasharray": "1.5 1.3",
+  },
+  ferry: {
+    stroke: themedColor("--road-minor", "#3f8fd6"),
+    "stroke-dasharray": "3 2",
+  },
   pier: { stroke: themedColor("--road-minor", "#c2b394") },
   bridge: { stroke: themedColor("--road-minor", "#c9bdad") },
   raceway: { stroke: themedColor("--road-minor", "#d9a8a0") },
@@ -299,9 +346,15 @@ function getRoadVariantStyle(roadClass: string): SvgStyle | undefined {
   return ROAD_VARIANT_STYLES[roadClass];
 }
 
-export function normalizeRoadClass(properties: Record<string, unknown> = {}): string {
+export function normalizeRoadClass(
+  properties: Record<string, unknown> = {},
+): string {
   const token = String(
-    properties.class ?? properties.type ?? properties.subclass ?? properties.kind ?? ""
+    properties.class ??
+      properties.type ??
+      properties.subclass ??
+      properties.kind ??
+      "",
   )
     .trim()
     .toLowerCase();
@@ -318,33 +371,81 @@ export function normalizeRoadClass(properties: Record<string, unknown> = {}): st
 const LANDUSE_VARIANT_STYLES: Record<string, LayerStyleDef> = {
   urban: {
     polygon: { fill: themedColor("--map-urban", "#ece6db"), stroke: "none" },
-    line: { stroke: themedColor("--map-urban", "#d6cebf"), "stroke-width": 1, fill: "none" },
-    point: { fill: themedColor("--map-urban", "#d6cebf"), stroke: "none", r: 1.4 },
+    line: {
+      stroke: themedColor("--map-urban", "#d6cebf"),
+      "stroke-width": 1,
+      fill: "none",
+    },
+    point: {
+      fill: themedColor("--map-urban", "#d6cebf"),
+      stroke: "none",
+      r: 1.4,
+    },
   },
   park: {
     polygon: { fill: themedColor("--map-landuse", "#cdebb0"), stroke: "none" },
-    line: { stroke: themedColor("--map-landuse", "#9fcf86"), "stroke-width": 1, fill: "none" },
-    point: { fill: themedColor("--map-landuse", "#9fcf86"), stroke: "none", r: 1.4 },
+    line: {
+      stroke: themedColor("--map-landuse", "#9fcf86"),
+      "stroke-width": 1,
+      fill: "none",
+    },
+    point: {
+      fill: themedColor("--map-landuse", "#9fcf86"),
+      stroke: "none",
+      r: 1.4,
+    },
   },
   meadow: {
     polygon: { fill: themedColor("--map-landuse", "#d7efbb"), stroke: "none" },
-    line: { stroke: themedColor("--map-landuse", "#a9d38f"), "stroke-width": 1, fill: "none" },
-    point: { fill: themedColor("--map-landuse", "#a9d38f"), stroke: "none", r: 1.4 },
+    line: {
+      stroke: themedColor("--map-landuse", "#a9d38f"),
+      "stroke-width": 1,
+      fill: "none",
+    },
+    point: {
+      fill: themedColor("--map-landuse", "#a9d38f"),
+      stroke: "none",
+      r: 1.4,
+    },
   },
   grass: {
     polygon: { fill: themedColor("--map-landuse", "#d4ebb7"), stroke: "none" },
-    line: { stroke: themedColor("--map-landuse", "#a7cf8d"), "stroke-width": 1, fill: "none" },
-    point: { fill: themedColor("--map-landuse", "#a7cf8d"), stroke: "none", r: 1.4 },
+    line: {
+      stroke: themedColor("--map-landuse", "#a7cf8d"),
+      "stroke-width": 1,
+      fill: "none",
+    },
+    point: {
+      fill: themedColor("--map-landuse", "#a7cf8d"),
+      stroke: "none",
+      r: 1.4,
+    },
   },
   farmland: {
     polygon: { fill: themedColor("--map-farmland", "#e6e2b8"), stroke: "none" },
-    line: { stroke: themedColor("--map-farmland", "#d1c98f"), "stroke-width": 1, fill: "none" },
-    point: { fill: themedColor("--map-farmland", "#d1c98f"), stroke: "none", r: 1.4 },
+    line: {
+      stroke: themedColor("--map-farmland", "#d1c98f"),
+      "stroke-width": 1,
+      fill: "none",
+    },
+    point: {
+      fill: themedColor("--map-farmland", "#d1c98f"),
+      stroke: "none",
+      r: 1.4,
+    },
   },
   forest: {
     polygon: { fill: themedColor("--map-landuse", "#b7d3a8"), stroke: "none" },
-    line: { stroke: themedColor("--map-landuse", "#8fb784"), "stroke-width": 1, fill: "none" },
-    point: { fill: themedColor("--map-landuse", "#8fb784"), stroke: "none", r: 1.4 },
+    line: {
+      stroke: themedColor("--map-landuse", "#8fb784"),
+      "stroke-width": 1,
+      fill: "none",
+    },
+    point: {
+      fill: themedColor("--map-landuse", "#8fb784"),
+      stroke: "none",
+      r: 1.4,
+    },
   },
   bare: {
     polygon: { fill: "#ddd7cb", stroke: "none" },
@@ -358,13 +459,29 @@ const LANDUSE_VARIANT_STYLES: Record<string, LayerStyleDef> = {
   },
   scrub: {
     polygon: { fill: themedColor("--map-landuse", "#c8d7b5"), stroke: "none" },
-    line: { stroke: themedColor("--map-landuse", "#a8bc93"), "stroke-width": 1, fill: "none" },
-    point: { fill: themedColor("--map-landuse", "#a8bc93"), stroke: "none", r: 1.4 },
+    line: {
+      stroke: themedColor("--map-landuse", "#a8bc93"),
+      "stroke-width": 1,
+      fill: "none",
+    },
+    point: {
+      fill: themedColor("--map-landuse", "#a8bc93"),
+      stroke: "none",
+      r: 1.4,
+    },
   },
   wetland: {
     polygon: { fill: themedColor("--map-landuse", "#bfdcc8"), stroke: "none" },
-    line: { stroke: themedColor("--map-landuse", "#98bfa7"), "stroke-width": 1, fill: "none" },
-    point: { fill: themedColor("--map-landuse", "#98bfa7"), stroke: "none", r: 1.4 },
+    line: {
+      stroke: themedColor("--map-landuse", "#98bfa7"),
+      "stroke-width": 1,
+      fill: "none",
+    },
+    point: {
+      fill: themedColor("--map-landuse", "#98bfa7"),
+      stroke: "none",
+      r: 1.4,
+    },
   },
   ice: {
     polygon: { fill: "#e8f2f8", stroke: "none" },
@@ -378,18 +495,39 @@ const LANDUSE_VARIANT_STYLES: Record<string, LayerStyleDef> = {
   },
   heath: {
     polygon: { fill: themedColor("--map-landuse", "#d8ccba"), stroke: "none" },
-    line: { stroke: themedColor("--map-landuse", "#bfae99"), "stroke-width": 1, fill: "none" },
-    point: { fill: themedColor("--map-landuse", "#bfae99"), stroke: "none", r: 1.4 },
+    line: {
+      stroke: themedColor("--map-landuse", "#bfae99"),
+      "stroke-width": 1,
+      fill: "none",
+    },
+    point: {
+      fill: themedColor("--map-landuse", "#bfae99"),
+      stroke: "none",
+      r: 1.4,
+    },
   },
   shrub: {
     polygon: { fill: themedColor("--map-landuse", "#cadab8"), stroke: "none" },
-    line: { stroke: themedColor("--map-landuse", "#a9be95"), "stroke-width": 1, fill: "none" },
-    point: { fill: themedColor("--map-landuse", "#a9be95"), stroke: "none", r: 1.4 },
+    line: {
+      stroke: themedColor("--map-landuse", "#a9be95"),
+      "stroke-width": 1,
+      fill: "none",
+    },
+    point: {
+      fill: themedColor("--map-landuse", "#a9be95"),
+      stroke: "none",
+      r: 1.4,
+    },
   },
 };
 
 function normalizeClassToken(properties: Record<string, unknown> = {}): string {
-  const raw = properties.class ?? properties.subclass ?? properties.type ?? properties.kind ?? "";
+  const raw =
+    properties.class ??
+    properties.subclass ??
+    properties.type ??
+    properties.kind ??
+    "";
   return String(raw).trim().toLowerCase();
 }
 
@@ -422,7 +560,12 @@ function getLanduseVariant(properties: Record<string, unknown> = {}): string {
     return "urban";
   }
   if (token.includes("park") || token.includes("recreation")) return "park";
-  if (token.includes("pitch") || token.includes("garden") || token.includes("golf")) return "park";
+  if (
+    token.includes("pitch") ||
+    token.includes("garden") ||
+    token.includes("golf")
+  )
+    return "park";
   if (token.includes("meadow")) return "meadow";
   if (token.includes("grass")) return "grass";
   if (
@@ -485,12 +628,13 @@ function isRoadClassVisibleAtZoom(roadClass: string, zoom?: number): boolean {
 export function isFeatureAllowedForLayer(
   layerName: LayerName,
   properties: Record<string, unknown> = {},
-  zoom?: number
+  zoom?: number,
 ): boolean {
   const roadClass = normalizeRoadClass(properties);
   if (layerName === "railways") {
     if (roadClass !== "rail") return false;
-    if (Number.isInteger(zoom) && (zoom as number) < RAILWAYS_MIN_ZOOM) return false;
+    if (Number.isInteger(zoom) && (zoom as number) < RAILWAYS_MIN_ZOOM)
+      return false;
     return true;
   }
   if (layerName === "roads") {
@@ -534,7 +678,7 @@ export function getStyleForFeature(
   layerName: LayerName,
   geometryKind: GeometryKind,
   properties: Record<string, unknown> = {},
-  zoom?: number
+  zoom?: number,
 ): SvgStyle | null {
   const styleSet = LAYER_STYLES[layerName];
   if (!styleSet) return null;
@@ -555,8 +699,13 @@ export function getStyleForFeature(
     if (roadVariant) {
       Object.assign(style, roadVariant);
     }
-    const baseWidth = roadWidthFromClass(roadClass, clampNumber(style["stroke-width"], 1.5));
-    style["stroke-width"] = Number((baseWidth * roadWidthZoomScale(zoom)).toFixed(2));
+    const baseWidth = roadWidthFromClass(
+      roadClass,
+      clampNumber(style["stroke-width"], 1.5),
+    );
+    style["stroke-width"] = Number(
+      (baseWidth * roadWidthZoomScale(zoom)).toFixed(2),
+    );
   }
 
   if (layerName === "landuse") {
@@ -595,27 +744,35 @@ function toNumberOrNull(value: unknown): number | null {
 
 function placeClassBaseSize(placeClass: string): number {
   if (placeClass === "country") return 16;
-  if (placeClass === "state" || placeClass === "province" || placeClass === "region") return 14;
+  if (
+    placeClass === "state" ||
+    placeClass === "province" ||
+    placeClass === "region"
+  )
+    return 14;
   if (placeClass === "city") return 13;
   if (placeClass === "town") return 11.5;
   if (placeClass === "village" || placeClass === "suburb") return 10;
   return 9;
 }
 
-function shouldSuppressPlaceLabel(properties: Record<string, unknown>): boolean {
+function shouldSuppressPlaceLabel(
+  properties: Record<string, unknown>,
+): boolean {
   const tokens = [
     String(properties.class ?? "").toLowerCase(),
     String(properties.subclass ?? "").toLowerCase(),
     String(properties.kind ?? "").toLowerCase(),
     String(properties.type ?? "").toLowerCase(),
   ];
-  return tokens.some((token) =>
-    token === "state" ||
-    token === "province" ||
-    token === "region" ||
-    token === "federal_state" ||
-    token === "federal-state" ||
-    token === "bundesland"
+  return tokens.some(
+    (token) =>
+      token === "state" ||
+      token === "province" ||
+      token === "region" ||
+      token === "federal_state" ||
+      token === "federal-state" ||
+      token === "bundesland",
   );
 }
 
@@ -624,7 +781,7 @@ function shouldSuppressLowZoomPlaceLabel(
   rank: number | null,
   population: number | null,
   capital: number | null,
-  zoom?: number
+  zoom?: number,
 ): boolean {
   if (!Number.isInteger(zoom) || (zoom ?? 0) > 9) {
     return false;
@@ -650,7 +807,7 @@ function shouldSuppressLowZoomPlaceLabel(
 export function getTextStyleForFeature(
   layerName: LayerName,
   properties: Record<string, unknown> = {},
-  zoom?: number
+  zoom?: number,
 ): SvgStyle | null {
   const base = getTextStyleForLayer(layerName);
   if (!base) return null;
@@ -666,7 +823,9 @@ export function getTextStyleForFeature(
   const rank = toNumberOrNull(properties.rank);
   const population = toNumberOrNull(properties.population);
   const capital = toNumberOrNull(properties.capital);
-  if (shouldSuppressLowZoomPlaceLabel(placeClass, rank, population, capital, zoom)) {
+  if (
+    shouldSuppressLowZoomPlaceLabel(placeClass, rank, population, capital, zoom)
+  ) {
     return null;
   }
 
@@ -709,12 +868,15 @@ export function getTextStyleForFeature(
 
 function sanitizeClassToken(token: unknown): string {
   if (typeof token !== "string") return "";
-  return token.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  return token
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-");
 }
 
 export function buildFeatureClasses(
   layerName: LayerName,
-  properties: Record<string, unknown> = {}
+  properties: Record<string, unknown> = {},
 ): string {
   const tokens: string[] = [];
   const base = BASE_CLASS_BY_LAYER[layerName];
@@ -722,8 +884,12 @@ export function buildFeatureClasses(
 
   const detail = sanitizeClassToken(
     String(
-      properties.class ?? properties.subclass ?? properties.type ?? properties.kind ?? ""
-    )
+      properties.class ??
+        properties.subclass ??
+        properties.type ??
+        properties.kind ??
+        "",
+    ),
   );
   if (detail) tokens.push(detail);
   return tokens.join(" ").trim();

@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { computeOverzoomTransform, decodeFeatureGeometry, type OverzoomTransform } from "./geometry.js";
 import type { VectorTileFeature } from "@mapbox/vector-tile";
+import { describe, expect, it } from "vitest";
+import {
+  computeOverzoomTransform,
+  decodeFeatureGeometry,
+  type OverzoomTransform,
+} from "./geometry.js";
 
 function fakePointFeature(x: number, y: number): VectorTileFeature {
   return {
@@ -23,7 +27,10 @@ describe("computeOverzoomTransform", () => {
   });
 
   it("is the identity transform when maxZoom is not a finite number", () => {
-    expect(computeOverzoomTransform(20, 3, 4, Number.NaN)).toMatchObject({ scale: 1, sourceZoom: 20 });
+    expect(computeOverzoomTransform(20, 3, 4, Number.NaN)).toMatchObject({
+      scale: 1,
+      sourceZoom: 20,
+    });
   });
 
   it("resolves the owning ancestor tile and crop window one level beyond max zoom", () => {
@@ -57,7 +64,14 @@ describe("computeOverzoomTransform", () => {
     const ancestorX = 3;
     const ancestorY = 5;
     const transforms = [0, 1].flatMap((dx) =>
-      [0, 1].map((dy) => computeOverzoomTransform(15, ancestorX * 2 + dx, ancestorY * 2 + dy, 14))
+      [0, 1].map((dy) =>
+        computeOverzoomTransform(
+          15,
+          ancestorX * 2 + dx,
+          ancestorY * 2 + dy,
+          14,
+        ),
+      ),
     );
     const offsets = transforms.map((t) => `${t.offsetX},${t.offsetY}`);
     expect(new Set(offsets).size).toBe(4);
@@ -72,8 +86,19 @@ describe("computeOverzoomTransform", () => {
 
 describe("decodeFeatureGeometry with an overzoom transform", () => {
   it("leaves geometry untouched under the identity transform", () => {
-    const identity: OverzoomTransform = { sourceZoom: 14, sourceX: 1, sourceY: 2, scale: 1, offsetX: 0, offsetY: 0 };
-    const geometry = decodeFeatureGeometry(fakePointFeature(2048, 2048), 4096, identity);
+    const identity: OverzoomTransform = {
+      sourceZoom: 14,
+      sourceX: 1,
+      sourceY: 2,
+      scale: 1,
+      offsetX: 0,
+      offsetY: 0,
+    };
+    const geometry = decodeFeatureGeometry(
+      fakePointFeature(2048, 2048),
+      4096,
+      identity,
+    );
     expect(geometry).toEqual({ kind: "Point", points: [{ x: 128, y: 128 }] });
   });
 
@@ -83,7 +108,11 @@ describe("decodeFeatureGeometry with an overzoom transform", () => {
     const transform = computeOverzoomTransform(15, 3, 4, 14);
     const rawX = (192 / 256) * 4096;
     const rawY = (64 / 256) * 4096;
-    const geometry = decodeFeatureGeometry(fakePointFeature(rawX, rawY), 4096, transform);
+    const geometry = decodeFeatureGeometry(
+      fakePointFeature(rawX, rawY),
+      4096,
+      transform,
+    );
     expect(geometry).toEqual({ kind: "Point", points: [{ x: 128, y: 128 }] });
   });
 
@@ -94,9 +123,14 @@ describe("decodeFeatureGeometry with an overzoom transform", () => {
     const transform = computeOverzoomTransform(15, 3, 4, 14);
     const rawX = (10 / 256) * 4096;
     const rawY = (200 / 256) * 4096;
-    const geometry = decodeFeatureGeometry(fakePointFeature(rawX, rawY), 4096, transform);
+    const geometry = decodeFeatureGeometry(
+      fakePointFeature(rawX, rawY),
+      4096,
+      transform,
+    );
     expect(geometry?.kind).toBe("Point");
-    const point = (geometry as { points: Array<{ x: number; y: number }> }).points[0];
+    const point = (geometry as { points: Array<{ x: number; y: number }> })
+      .points[0];
     expect(point.x).toBeLessThan(0);
     expect(point.y).toBeGreaterThan(256);
   });

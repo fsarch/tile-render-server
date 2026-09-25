@@ -1,10 +1,14 @@
 import { Worker } from "node:worker_threads";
-import type { Span as OtelSpan } from "@opentelemetry/api";
 import { withSpan } from "@fsarch/server/tracing";
+import type { Span as OtelSpan } from "@opentelemetry/api";
 import type { LabelAnchorCache } from "../../core/label-anchor-cache.js";
 import type { RenderOptions } from "../../core/renderer.js";
 import { TRACER_NAME } from "../../tracing.js";
-import type { FromWorkerMessage, RenderWorkerConfig, ToWorkerMessage } from "./render-worker-protocol.js";
+import type {
+  FromWorkerMessage,
+  RenderWorkerConfig,
+  ToWorkerMessage,
+} from "./render-worker-protocol.js";
 
 export interface RenderWorkerPoolConfig extends RenderWorkerConfig {
   // Number of worker threads to keep alive. TilesService picks this from
@@ -21,7 +25,9 @@ export interface RenderWorkerPoolConfig extends RenderWorkerConfig {
 // TilesService) should treat this as "temporarily overloaded", e.g. a 503.
 export class RenderQueueFullError extends Error {
   constructor() {
-    super("RenderWorkerPool queue is full - the server is temporarily overloaded");
+    super(
+      "RenderWorkerPool queue is full - the server is temporarily overloaded",
+    );
     this.name = "RenderQueueFullError";
   }
 }
@@ -50,7 +56,12 @@ interface WorkerState {
   // worker only ever has one job in flight at a time (renderer.ts never overlaps its
   // own labelAnchorCache calls), so there's no ambiguity in looking this up by worker
   // identity alone.
-  current?: { jobId: number; job: PendingJob; labelAnchorCache: LabelAnchorCache; dispatchedAt: number };
+  current?: {
+    jobId: number;
+    job: PendingJob;
+    labelAnchorCache: LabelAnchorCache;
+    dispatchedAt: number;
+  };
 }
 
 export type WorkerFactory = (config: RenderWorkerConfig) => Worker;
@@ -63,7 +74,10 @@ function defaultWorkerFactory(config: RenderWorkerConfig): Worker {
 
 function toArrayBuffer(data: ArrayBuffer | Uint8Array): ArrayBuffer {
   if (data instanceof ArrayBuffer) return data;
-  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  return data.buffer.slice(
+    data.byteOffset,
+    data.byteOffset + data.byteLength,
+  ) as ArrayBuffer;
 }
 
 // Spreads on-demand tile rendering (MVT decode + geometry + SVG string building - all
@@ -94,7 +108,7 @@ export class RenderWorkerPool {
 
   constructor(
     private readonly config: RenderWorkerPoolConfig,
-    private readonly createWorker: WorkerFactory = defaultWorkerFactory
+    private readonly createWorker: WorkerFactory = defaultWorkerFactory,
   ) {
     this.maxQueueLength = config.maxQueueLength ?? config.concurrency * 20;
     const count = Math.max(1, config.concurrency);
@@ -111,7 +125,7 @@ export class RenderWorkerPool {
   render(
     tileBuffer: ArrayBuffer | Uint8Array,
     options: RenderOptions,
-    labelAnchorCache: LabelAnchorCache
+    labelAnchorCache: LabelAnchorCache,
   ): Promise<string | null> {
     return withSpan(
       "render_worker_pool.render",
@@ -121,11 +135,17 @@ export class RenderWorkerPool {
         attributes: {
           "pool.free_workers": this.freeWorkers.length,
           "pool.queue_length": this.queue.length,
-          ...(Number.isInteger(options.zoom) ? { "tile.z": options.zoom as number } : {}),
-          ...(Number.isInteger(options.tileX) ? { "tile.x": options.tileX as number } : {}),
-          ...(Number.isInteger(options.tileY) ? { "tile.y": options.tileY as number } : {}),
+          ...(Number.isInteger(options.zoom)
+            ? { "tile.z": options.zoom as number }
+            : {}),
+          ...(Number.isInteger(options.tileX)
+            ? { "tile.x": options.tileX as number }
+            : {}),
+          ...(Number.isInteger(options.tileY)
+            ? { "tile.y": options.tileY as number }
+            : {}),
         },
-      }
+      },
     );
   }
 
@@ -133,18 +153,26 @@ export class RenderWorkerPool {
     tileBuffer: ArrayBuffer | Uint8Array,
     options: RenderOptions,
     labelAnchorCache: LabelAnchorCache,
-    span: OtelSpan
+    span: OtelSpan,
   ): Promise<string | null> {
     if (this.closed) {
       return Promise.reject(new Error("RenderWorkerPool is closed"));
     }
-    if (this.freeWorkers.length === 0 && this.queue.length >= this.maxQueueLength) {
+    if (
+      this.freeWorkers.length === 0 &&
+      this.queue.length >= this.maxQueueLength
+    ) {
       return Promise.reject(new RenderQueueFullError());
     }
 
     const buffer = toArrayBuffer(tileBuffer);
     return new Promise<string | null>((resolve, reject) => {
-      const job: PendingJob = { resolve, reject, span, enqueuedAt: performance.now() };
+      const job: PendingJob = {
+        resolve,
+        reject,
+        span,
+        enqueuedAt: performance.now(),
+      };
       const worker = this.freeWorkers.pop();
       if (worker) {
         this.dispatch(worker, buffer, options, labelAnchorCache, job);
@@ -157,7 +185,9 @@ export class RenderWorkerPool {
   async close(): Promise<void> {
     this.closed = true;
     for (const queued of this.queue.splice(0)) {
-      queued.job.reject(new Error("RenderWorkerPool closed before this job was dispatched"));
+      queued.job.reject(
+        new Error("RenderWorkerPool closed before this job was dispatched"),
+      );
     }
     await Promise.all(
       [...this.workers.keys()].map(
@@ -166,8 +196,8 @@ export class RenderWorkerPool {
             worker.once("exit", () => resolvePromise());
             worker.postMessage({ type: "close" } satisfies ToWorkerMessage);
             setTimeout(() => void worker.terminate(), 200);
-          })
-      )
+          }),
+      ),
     );
   }
 
@@ -175,7 +205,9 @@ export class RenderWorkerPool {
     const worker = this.createWorker(this.config);
     const state: WorkerState = { worker };
     this.workers.set(worker, state);
-    worker.on("message", (message: FromWorkerMessage) => this.handleMessage(state, message));
+    worker.on("message", (message: FromWorkerMessage) =>
+      this.handleMessage(state, message),
+    );
     worker.on("error", (error: Error) => this.handleWorkerError(state, error));
     this.freeWorkers.push(worker);
   }
@@ -185,13 +217,21 @@ export class RenderWorkerPool {
     tileBuffer: ArrayBuffer,
     options: RenderOptions,
     labelAnchorCache: LabelAnchorCache,
-    job: PendingJob
+    job: PendingJob,
   ): void {
     const state = this.workers.get(worker);
     if (!state) return; // worker was removed (crashed) between being freed and dispatch - shouldn't happen
     const jobId = this.nextJobId++;
-    state.current = { jobId, job, labelAnchorCache, dispatchedAt: performance.now() };
-    worker.postMessage({ type: "render", jobId, tileBuffer, options } satisfies ToWorkerMessage, [tileBuffer]);
+    state.current = {
+      jobId,
+      job,
+      labelAnchorCache,
+      dispatchedAt: performance.now(),
+    };
+    worker.postMessage(
+      { type: "render", jobId, tileBuffer, options } satisfies ToWorkerMessage,
+      [tileBuffer],
+    );
   }
 
   private handleMessage(state: WorkerState, message: FromWorkerMessage): void {
@@ -206,7 +246,10 @@ export class RenderWorkerPool {
     if (!current || current.jobId !== message.jobId) return; // stale message from a superseded job
     state.current = undefined;
 
-    current.job.span.setAttribute("queue.wait_ms", current.dispatchedAt - current.job.enqueuedAt);
+    current.job.span.setAttribute(
+      "queue.wait_ms",
+      current.dispatchedAt - current.job.enqueuedAt,
+    );
     current.job.span.setAttribute("worker.render_ms", message.renderMs);
 
     if (message.type === "result") {
@@ -220,13 +263,17 @@ export class RenderWorkerPool {
 
   private async handleAnchorRequest(
     state: WorkerState,
-    message: Extract<FromWorkerMessage, { type: "anchor-get" | "anchor-set" }>
+    message: Extract<FromWorkerMessage, { type: "anchor-get" | "anchor-set" }>,
   ): Promise<void> {
     const cache = state.current?.labelAnchorCache;
     if (!cache) return; // worker crashed/was reassigned mid-flight - nothing sane to reply with
     if (message.type === "anchor-get") {
       const value = await cache.get(message.key);
-      state.worker.postMessage({ type: "anchor-result", requestId: message.requestId, value } satisfies ToWorkerMessage);
+      state.worker.postMessage({
+        type: "anchor-result",
+        requestId: message.requestId,
+        value,
+      } satisfies ToWorkerMessage);
     } else {
       await cache.set(message.key, message.value);
       state.worker.postMessage({
@@ -256,7 +303,13 @@ export class RenderWorkerPool {
   private releaseWorker(worker: Worker): void {
     const next = this.queue.shift();
     if (next) {
-      this.dispatch(worker, next.tileBuffer, next.options, next.labelAnchorCache, next.job);
+      this.dispatch(
+        worker,
+        next.tileBuffer,
+        next.options,
+        next.labelAnchorCache,
+        next.job,
+      );
       return;
     }
     this.freeWorkers.push(worker);

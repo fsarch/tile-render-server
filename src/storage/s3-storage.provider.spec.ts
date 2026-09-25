@@ -1,8 +1,10 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { S3Client } from "@aws-sdk/client-s3";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { S3StorageProvider } from "./s3-storage.provider.js";
 
-function fakeBody(bytes: number[]): { transformToByteArray: () => Promise<Uint8Array> } {
+function fakeBody(bytes: number[]): {
+  transformToByteArray: () => Promise<Uint8Array>;
+} {
   return { transformToByteArray: async () => new Uint8Array(bytes) };
 }
 
@@ -18,7 +20,11 @@ describe("S3StorageProvider", () => {
   });
 
   function createProvider(prefix?: string): S3StorageProvider {
-    return new S3StorageProvider({ bucket: "test-bucket", region: "eu-central-1", prefix });
+    return new S3StorageProvider({
+      bucket: "test-bucket",
+      region: "eu-central-1",
+      prefix,
+    });
   }
 
   it("reads a whole file via GetObjectCommand", async () => {
@@ -28,7 +34,10 @@ describe("S3StorageProvider", () => {
     const result = await provider.readFile("foo.txt");
 
     expect(result).toEqual(Buffer.from([1, 2, 3]));
-    expect(sendSpy.mock.calls[0][0].input).toEqual({ Bucket: "test-bucket", Key: "foo.txt" });
+    expect(sendSpy.mock.calls[0][0].input).toEqual({
+      Bucket: "test-bucket",
+      Key: "foo.txt",
+    });
   });
 
   it("prefixes keys when a prefix is configured", async () => {
@@ -83,7 +92,10 @@ describe("S3StorageProvider", () => {
 
     await provider.deleteFile("foo.txt");
 
-    expect(sendSpy.mock.calls[0][0].input).toEqual({ Bucket: "test-bucket", Key: "foo.txt" });
+    expect(sendSpy.mock.calls[0][0].input).toEqual({
+      Bucket: "test-bucket",
+      Key: "foo.txt",
+    });
   });
 
   it("mkdir is a no-op (S3 has no real directories)", async () => {

@@ -2,8 +2,14 @@ import { EventEmitter } from "node:events";
 import type { Worker } from "node:worker_threads";
 import { describe, expect, it, vi } from "vitest";
 import type { LabelAnchorCache } from "../../core/label-anchor-cache.js";
-import { RenderQueueFullError, RenderWorkerPool } from "./render-worker-pool.js";
-import type { FromWorkerMessage, ToWorkerMessage } from "./render-worker-protocol.js";
+import {
+  RenderQueueFullError,
+  RenderWorkerPool,
+} from "./render-worker-pool.js";
+import type {
+  FromWorkerMessage,
+  ToWorkerMessage,
+} from "./render-worker-protocol.js";
 
 // A fake worker_threads.Worker: just enough surface (on/once/postMessage/terminate)
 // for RenderWorkerPool to drive, with postMessage recorded and emit() used to simulate
@@ -21,7 +27,7 @@ class FakeWorker extends EventEmitter {
 }
 
 function createPool(
-  overrides: Partial<{ concurrency: number; maxQueueLength: number }> = {}
+  overrides: Partial<{ concurrency: number; maxQueueLength: number }> = {},
 ): { pool: RenderWorkerPool; workers: FakeWorker[] } {
   const workers: FakeWorker[] = [];
   const pool = new RenderWorkerPool(
@@ -38,7 +44,7 @@ function createPool(
       const worker = new FakeWorker();
       workers.push(worker);
       return worker as unknown as Worker;
-    }
+    },
   );
   return { pool, workers };
 }
@@ -59,7 +65,9 @@ describe("RenderWorkerPool", () => {
 
     const result = pool.render(tileBuffer, { zoom: 3 }, fakeLabelAnchorCache());
 
-    expect(workers[0].sent).toEqual([{ type: "render", jobId: 1, tileBuffer, options: { zoom: 3 } }]);
+    expect(workers[0].sent).toEqual([
+      { type: "render", jobId: 1, tileBuffer, options: { zoom: 3 } },
+    ]);
     workers[0].send({ type: "result", jobId: 1, svg: "<svg />", renderMs: 5 });
 
     expect(await result).toBe("<svg />");
@@ -68,7 +76,12 @@ describe("RenderWorkerPool", () => {
   it("rejects when the worker reports an error", async () => {
     const { pool, workers } = createPool({ concurrency: 1 });
     const result = pool.render(new ArrayBuffer(1), {}, fakeLabelAnchorCache());
-    workers[0].send({ type: "error", jobId: 1, message: "bad tile", renderMs: 5 });
+    workers[0].send({
+      type: "error",
+      jobId: 1,
+      message: "bad tile",
+      renderMs: 5,
+    });
 
     await expect(result).rejects.toThrow("bad tile");
   });
@@ -87,9 +100,18 @@ describe("RenderWorkerPool", () => {
     await Promise.resolve();
 
     expect(cache.get).toHaveBeenCalledWith(key);
-    expect(workers[0].sent).toContainEqual({ type: "anchor-result", requestId: 1, value: { fx: 0.5, fy: 0.5 } });
+    expect(workers[0].sent).toContainEqual({
+      type: "anchor-result",
+      requestId: 1,
+      value: { fx: 0.5, fy: 0.5 },
+    });
 
-    workers[0].send({ type: "anchor-set", requestId: 2, key, value: { fx: 0.1, fy: 0.1 } });
+    workers[0].send({
+      type: "anchor-set",
+      requestId: 2,
+      key,
+      value: { fx: 0.1, fy: 0.1 },
+    });
     await Promise.resolve();
     await Promise.resolve();
     expect(cache.set).toHaveBeenCalledWith(key, { fx: 0.1, fy: 0.1 });
@@ -107,13 +129,26 @@ describe("RenderWorkerPool", () => {
 
     expect(workers[0].sent).toHaveLength(1); // second job is queued, not yet sent
 
-    workers[0].send({ type: "result", jobId: 1, svg: "<svg>first</svg>", renderMs: 5 });
+    workers[0].send({
+      type: "result",
+      jobId: 1,
+      svg: "<svg>first</svg>",
+      renderMs: 5,
+    });
     expect(await first).toBe("<svg>first</svg>");
 
     expect(workers[0].sent).toHaveLength(2);
-    expect(workers[0].sent[1]).toMatchObject({ jobId: 2, options: { zoom: 2 } });
+    expect(workers[0].sent[1]).toMatchObject({
+      jobId: 2,
+      options: { zoom: 2 },
+    });
 
-    workers[0].send({ type: "result", jobId: 2, svg: "<svg>second</svg>", renderMs: 5 });
+    workers[0].send({
+      type: "result",
+      jobId: 2,
+      svg: "<svg>second</svg>",
+      renderMs: 5,
+    });
     expect(await second).toBe("<svg>second</svg>");
   });
 
@@ -124,7 +159,9 @@ describe("RenderWorkerPool", () => {
     void pool.render(new ArrayBuffer(1), {}, cache).catch(() => {}); // occupies the one worker
     void pool.render(new ArrayBuffer(1), {}, cache).catch(() => {}); // fills the queue (maxQueueLength=1)
 
-    await expect(pool.render(new ArrayBuffer(1), {}, cache)).rejects.toBeInstanceOf(RenderQueueFullError);
+    await expect(
+      pool.render(new ArrayBuffer(1), {}, cache),
+    ).rejects.toBeInstanceOf(RenderQueueFullError);
   });
 
   it("replaces a worker that errors out, rejecting its in-flight job but keeping pool capacity", async () => {
@@ -141,8 +178,14 @@ describe("RenderWorkerPool", () => {
     const next = pool.render(new ArrayBuffer(1), {}, cache);
     expect(workers[1].sent).toHaveLength(1);
     const dispatched = workers[1].sent[0];
-    if (dispatched?.type !== "render") throw new Error("expected a render message");
-    workers[1].send({ type: "result", jobId: dispatched.jobId, svg: "<svg />", renderMs: 5 });
+    if (dispatched?.type !== "render")
+      throw new Error("expected a render message");
+    workers[1].send({
+      type: "result",
+      jobId: dispatched.jobId,
+      svg: "<svg />",
+      renderMs: 5,
+    });
     await expect(next).resolves.toBe("<svg />");
   });
 

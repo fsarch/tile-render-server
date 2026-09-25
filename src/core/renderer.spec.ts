@@ -139,7 +139,9 @@ describe("cross-tile nature area label resolution", () => {
     const tileBX = 100;
     const tileBY = 101; // directly south of tile A - has the real polygon
 
-    const tileABytes = encodeParkTile([{ name: "Testwald", kind: "Point", x: 2048, y: 2048 }]);
+    const tileABytes = encodeParkTile([
+      { name: "Testwald", kind: "Point", x: 2048, y: 2048 },
+    ]);
     const tileBBytes = encodeParkTile([
       {
         name: "Testwald",
@@ -164,10 +166,23 @@ describe("cross-tile nature area label resolution", () => {
       },
     };
 
-    const renderOptions = { labels: false, roadLabels: false, natureLabels: true, zoom };
+    const renderOptions = {
+      labels: false,
+      roadLabels: false,
+      natureLabels: true,
+      zoom,
+    };
 
-    const svgA = await renderTileToSvg(tileABytes, { ...renderOptions, tileX: tileAX, tileY: tileAY }, archive);
-    const svgB = await renderTileToSvg(tileBBytes, { ...renderOptions, tileX: tileBX, tileY: tileBY }, archive);
+    const svgA = await renderTileToSvg(
+      tileABytes,
+      { ...renderOptions, tileX: tileAX, tileY: tileAY },
+      archive,
+    );
+    const svgB = await renderTileToSvg(
+      tileBBytes,
+      { ...renderOptions, tileX: tileBX, tileY: tileBY },
+      archive,
+    );
 
     expect(svgA).not.toBeNull();
     expect(svgB).not.toBeNull();
@@ -187,7 +202,9 @@ describe("cross-tile nature area label resolution", () => {
     const tileBX = 200;
     const tileBY = 201; // real polygon, same feature id 777
 
-    const tileABytes = encodeParkTile([{ id: 777, name: "Idwald", kind: "Point", x: 2048, y: 2048 }]);
+    const tileABytes = encodeParkTile([
+      { id: 777, name: "Idwald", kind: "Point", x: 2048, y: 2048 },
+    ]);
     const tileBBytes = encodeParkTile([
       {
         id: 777,
@@ -211,10 +228,23 @@ describe("cross-tile nature area label resolution", () => {
         return tiles.get(`${z}/${x}/${y}`);
       },
     };
-    const renderOptions = { labels: false, roadLabels: false, natureLabels: true, zoom };
+    const renderOptions = {
+      labels: false,
+      roadLabels: false,
+      natureLabels: true,
+      zoom,
+    };
 
-    const svgA = await renderTileToSvg(tileABytes, { ...renderOptions, tileX: tileAX, tileY: tileAY }, archive);
-    const svgB = await renderTileToSvg(tileBBytes, { ...renderOptions, tileX: tileBX, tileY: tileBY }, archive);
+    const svgA = await renderTileToSvg(
+      tileABytes,
+      { ...renderOptions, tileX: tileAX, tileY: tileAY },
+      archive,
+    );
+    const svgB = await renderTileToSvg(
+      tileBBytes,
+      { ...renderOptions, tileX: tileBX, tileY: tileBY },
+      archive,
+    );
 
     expect(svgA).not.toContain("Idwald");
     expect(svgB?.match(/Idwald/g)?.length ?? 0).toBe(1);
@@ -233,15 +263,32 @@ describe("cross-tile nature area label resolution", () => {
 
     // Extent-space square with ~1024 units per side -> 64px per side in the rendered
     // 256px tile space (well above the min-area threshold nature area labels require).
-    const square = (offsetX: number, offsetY: number): Array<[number, number]> => [
+    const square = (
+      offsetX: number,
+      offsetY: number,
+    ): Array<[number, number]> => [
       [1536 + offsetX, 1536 + offsetY],
       [2560 + offsetX, 1536 + offsetY],
       [2560 + offsetX, 2560 + offsetY],
       [1536 + offsetX, 2560 + offsetY],
     ];
 
-    const tileCBytes = encodeParkTile([{ id: 57628083, name: "Borkenberge", kind: "Polygon", ring: square(0, 0) }]);
-    const tileDBytes = encodeParkTile([{ id: 3250242342, name: "Borkenberge", kind: "Polygon", ring: square(0, 0) }]);
+    const tileCBytes = encodeParkTile([
+      {
+        id: 57628083,
+        name: "Borkenberge",
+        kind: "Polygon",
+        ring: square(0, 0),
+      },
+    ]);
+    const tileDBytes = encodeParkTile([
+      {
+        id: 3250242342,
+        name: "Borkenberge",
+        kind: "Polygon",
+        ring: square(0, 0),
+      },
+    ]);
 
     const tiles = new Map<string, Uint8Array>([
       [`${zoom}/${tileCX}/${tileCY}`, tileCBytes],
@@ -252,10 +299,23 @@ describe("cross-tile nature area label resolution", () => {
         return tiles.get(`${z}/${x}/${y}`);
       },
     };
-    const renderOptions = { labels: false, roadLabels: false, natureLabels: true, zoom };
+    const renderOptions = {
+      labels: false,
+      roadLabels: false,
+      natureLabels: true,
+      zoom,
+    };
 
-    const svgC = await renderTileToSvg(tileCBytes, { ...renderOptions, tileX: tileCX, tileY: tileCY }, archive);
-    const svgD = await renderTileToSvg(tileDBytes, { ...renderOptions, tileX: tileDX, tileY: tileDY }, archive);
+    const svgC = await renderTileToSvg(
+      tileCBytes,
+      { ...renderOptions, tileX: tileCX, tileY: tileCY },
+      archive,
+    );
+    const svgD = await renderTileToSvg(
+      tileDBytes,
+      { ...renderOptions, tileX: tileDX, tileY: tileDY },
+      archive,
+    );
 
     expect(svgC?.match(/Borkenberge/g)?.length ?? 0).toBe(1);
     expect(svgD?.match(/Borkenberge/g)?.length ?? 0).toBe(1);
@@ -284,7 +344,10 @@ describe("cross-tile road/river label continuation", () => {
     //   tile A (north): (108,231) -> (128,256)
     //   tile B (south): (128,0)   -> (148,25)
     // i.e. one continuous road from (108,-25) to (148,281) in tile A's local frame.
-    const toExtent = ([x, y]: [number, number]): [number, number] => [x * 16, y * 16];
+    const toExtent = ([x, y]: [number, number]): [number, number] => [
+      x * 16,
+      y * 16,
+    ];
     const tileABytes = encodeRoadTile({
       id: featureId,
       name,
@@ -307,10 +370,23 @@ describe("cross-tile road/river label continuation", () => {
         return tiles.get(`${z}/${x}/${y}`);
       },
     };
-    const renderOptions = { labels: false, roadLabels: true, natureLabels: false, zoom };
+    const renderOptions = {
+      labels: false,
+      roadLabels: true,
+      natureLabels: false,
+      zoom,
+    };
 
-    const svgA = await renderTileToSvg(tileABytes, { ...renderOptions, tileX, tileY: tileAY }, archive);
-    const svgB = await renderTileToSvg(tileBBytes, { ...renderOptions, tileX, tileY: tileBY }, archive);
+    const svgA = await renderTileToSvg(
+      tileABytes,
+      { ...renderOptions, tileX, tileY: tileAY },
+      archive,
+    );
+    const svgB = await renderTileToSvg(
+      tileBBytes,
+      { ...renderOptions, tileX, tileY: tileBY },
+      archive,
+    );
 
     expect(svgA).not.toBeNull();
     expect(svgB).not.toBeNull();
@@ -371,7 +447,9 @@ describe("overzoom", () => {
 
     const archive: TileSource = {
       async getTile(z, x, y) {
-        return z === datasetMaxZoom && x === ancestorX && y === ancestorY ? ancestorBytes : undefined;
+        return z === datasetMaxZoom && x === ancestorX && y === ancestorY
+          ? ancestorBytes
+          : undefined;
       },
     };
 
@@ -383,11 +461,15 @@ describe("overzoom", () => {
       datasetMaxZoom,
     };
 
-    const svgOwner = await renderTileToSvg(ancestorBytes, { ...baseOptions, tileX: ownerX, tileY: ownerY }, archive);
+    const svgOwner = await renderTileToSvg(
+      ancestorBytes,
+      { ...baseOptions, tileX: ownerX, tileY: ownerY },
+      archive,
+    );
     const svgSibling = await renderTileToSvg(
       ancestorBytes,
       { ...baseOptions, tileX: siblingX, tileY: siblingY },
-      archive
+      archive,
     );
 
     expect(svgOwner).toContain("Ueberzoompark");
@@ -408,10 +490,20 @@ describe("overzoom", () => {
         ],
       },
     ]);
-    const renderOptions = { labels: false, roadLabels: false, natureLabels: true, zoom, tileX: 42, tileY: 42 };
+    const renderOptions = {
+      labels: false,
+      roadLabels: false,
+      natureLabels: true,
+      zoom,
+      tileX: 42,
+      tileY: 42,
+    };
 
     const withoutMaxZoom = await renderTileToSvg(tileBytes, renderOptions);
-    const withMaxZoomEqualToZoom = await renderTileToSvg(tileBytes, { ...renderOptions, datasetMaxZoom: zoom });
+    const withMaxZoomEqualToZoom = await renderTileToSvg(tileBytes, {
+      ...renderOptions,
+      datasetMaxZoom: zoom,
+    });
 
     expect(withoutMaxZoom).toContain("Normalpark");
     expect(withoutMaxZoom).toBe(withMaxZoomEqualToZoom);
@@ -424,7 +516,10 @@ describe("overzoom", () => {
     // zoom is climbing past the dataset's real max only via overzoom, where a tile
     // shows a much smaller, magnified slice of the same data and there's plenty of
     // room for every road name.
-    const toExtent = ([x, y]: [number, number]): [number, number] => [x * 16, y * 16];
+    const toExtent = ([x, y]: [number, number]): [number, number] => [
+      x * 16,
+      y * 16,
+    ];
     const roadClass = "residential";
     const name = "Musterstraße";
 

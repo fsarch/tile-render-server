@@ -3,9 +3,11 @@ FROM node:24.20.0-trixie-slim AS base
 
 ENV PORT 8080
 
+RUN corepack enable
+
 WORKDIR /usr/src/app
 
-COPY package*.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 
 # Production Deps
@@ -17,7 +19,7 @@ RUN apt-get update && \
     apt-get install -y node-gyp && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-RUN npm ci --fetch-timeout=300000
+RUN pnpm install --frozen-lockfile --prod
 
 
 # Build Dockerfile
@@ -27,10 +29,10 @@ RUN apt-get update && \
     apt-get install -y node-gyp && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-RUN npm ci --fetch-timeout=300000
+RUN pnpm install --frozen-lockfile
 
 COPY . ./
-RUN npm run build
+RUN pnpm run build
 
 
 # Main Dockerfile
@@ -47,4 +49,3 @@ COPY --from=deps --chown=node:node /usr/src/app/node_modules ./node_modules
 USER node
 
 CMD ["node", "./dist/main.js"]
-

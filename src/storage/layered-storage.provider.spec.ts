@@ -71,8 +71,13 @@ describe("LayeredStorageProvider", () => {
   });
 
   it("readFile throws when no layer has the file", async () => {
-    const provider = new LayeredStorageProvider([createSpyProvider(), createSpyProvider()]);
-    await expect(provider.readFile("missing.svg")).rejects.toThrow(/not found in any storage layer/i);
+    const provider = new LayeredStorageProvider([
+      createSpyProvider(),
+      createSpyProvider(),
+    ]);
+    await expect(provider.readFile("missing.svg")).rejects.toThrow(
+      /not found in any storage layer/i,
+    );
   });
 
   it("writeFile writes to every layer", async () => {

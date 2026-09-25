@@ -5,7 +5,9 @@ import { DatasetVersion } from "./dataset-version.entity.js";
 
 describe("DatasetVersion entity", () => {
   it("maps to the dataset_versions table", () => {
-    const table = getMetadataArgsStorage().tables.find((t) => t.target === DatasetVersion);
+    const table = getMetadataArgsStorage().tables.find(
+      (t) => t.target === DatasetVersion,
+    );
     expect(table?.name).toBe("dataset_versions");
   });
 
@@ -14,7 +16,13 @@ describe("DatasetVersion entity", () => {
       .columns.filter((c) => c.target === DatasetVersion)
       .map((c) => c.propertyName);
     expect(columnNames).toEqual(
-      expect.arrayContaining(["id", "path", "isActive", "creationTime", "updateTime"])
+      expect.arrayContaining([
+        "id",
+        "path",
+        "isActive",
+        "creationTime",
+        "updateTime",
+      ]),
     );
   });
 });

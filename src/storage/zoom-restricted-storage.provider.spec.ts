@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { extractZoomFromCacheKey, ZoomRestrictedStorageProvider } from "./zoom-restricted-storage.provider.js";
 import { MemoryStorageProvider } from "./memory-storage.provider.js";
+import {
+  extractZoomFromCacheKey,
+  ZoomRestrictedStorageProvider,
+} from "./zoom-restricted-storage.provider.js";
 
 describe("extractZoomFromCacheKey", () => {
   it("extracts the zoom from a {datasetVersionId}/{z}/{x}/{y}.svg key", () => {
@@ -81,8 +84,12 @@ describe("ZoomRestrictedStorageProvider", () => {
     const inner = new MemoryStorageProvider();
     const provider = new ZoomRestrictedStorageProvider(inner, undefined, 14);
 
-    await expect(provider.readFile("v1/18/1/1.svg")).rejects.toThrow(/outside this cache layer/i);
-    await expect(provider.readRange("v1/18/1/1.svg", 0, 1)).rejects.toThrow(/outside this cache layer/i);
+    await expect(provider.readFile("v1/18/1/1.svg")).rejects.toThrow(
+      /outside this cache layer/i,
+    );
+    await expect(provider.readRange("v1/18/1/1.svg", 0, 1)).rejects.toThrow(
+      /outside this cache layer/i,
+    );
   });
 
   it("fails open (treats as in-range) when the zoom can't be determined from the key", async () => {

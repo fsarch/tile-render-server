@@ -1,8 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import type {
+  GlobalAreaAnchor,
+  LabelAnchorCache,
+  LabelAnchorKey,
+} from "../../core/label-anchor-cache.js";
 import { LabelAnchor } from "../../database/entities/label-anchor.entity.js";
-import type { GlobalAreaAnchor, LabelAnchorCache, LabelAnchorKey } from "../../core/label-anchor-cache.js";
 
 @Injectable()
 export class PostgresLabelAnchorCache implements LabelAnchorCache {
@@ -11,7 +15,10 @@ export class PostgresLabelAnchorCache implements LabelAnchorCache {
   // resolves the active DatasetVersion, before any tile is rendered.
   private datasetVersionId?: string;
 
-  constructor(@InjectRepository(LabelAnchor) private readonly repository: Repository<LabelAnchor>) {}
+  constructor(
+    @InjectRepository(LabelAnchor)
+    private readonly repository: Repository<LabelAnchor>,
+  ) {}
 
   setDatasetVersionId(id: string): void {
     this.datasetVersionId = id;
@@ -27,7 +34,10 @@ export class PostgresLabelAnchorCache implements LabelAnchorCache {
     return { fx: row.fx, fy: row.fy };
   }
 
-  async set(key: LabelAnchorKey, value: GlobalAreaAnchor | null): Promise<void> {
+  async set(
+    key: LabelAnchorKey,
+    value: GlobalAreaAnchor | null,
+  ): Promise<void> {
     // A `null` result ("resolution attempted, nothing found") isn't persisted: the
     // entity's fx/fy columns are not-null (there's nothing meaningful to store), and
     // re-attempting an unresolvable lookup later is cheap and safe - unlike a
@@ -41,13 +51,15 @@ export class PostgresLabelAnchorCache implements LabelAnchorCache {
         fx: value.fx,
         fy: value.fy,
       },
-      ["sourceLayer", "featureId", "datasetVersion"]
+      ["sourceLayer", "featureId", "datasetVersion"],
     );
   }
 
   private getDatasetVersionId(): string {
     if (!this.datasetVersionId) {
-      throw new Error("PostgresLabelAnchorCache used before setDatasetVersionId() was called");
+      throw new Error(
+        "PostgresLabelAnchorCache used before setDatasetVersionId() was called",
+      );
     }
     return this.datasetVersionId;
   }

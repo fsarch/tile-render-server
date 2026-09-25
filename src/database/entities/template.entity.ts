@@ -1,4 +1,11 @@
-import { Column, CreateDateColumn, DeleteDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from "typeorm";
+import {
+  Column,
+  CreateDateColumn,
+  DeleteDateColumn,
+  Entity,
+  PrimaryColumn,
+  UpdateDateColumn,
+} from "typeorm";
 
 // A color theme for the rendered map, applied as a *post-processing* step on top of an
 // already-rendered SVG tile (see injectStyleTemplate in src/core/svg.ts) - never during
@@ -46,6 +53,10 @@ export class Template {
   // transparently excludes rows where this is set from every find/findOne unless a
   // query explicitly passes `withDeleted: true`, and populates it via
   // repository.softDelete()/softRemove() rather than an actual DELETE.
-  @DeleteDateColumn({ name: "deletion_time", type: "timestamptz", nullable: true })
+  @DeleteDateColumn({
+    name: "deletion_time",
+    type: "timestamptz",
+    nullable: true,
+  })
   deletionTime?: Date | null;
 }

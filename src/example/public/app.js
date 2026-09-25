@@ -3,9 +3,15 @@ const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
 const minZoom = Number(searchParams.get("minZoom") ?? 0);
 const maxZoom = Number(searchParams.get("maxZoom") ?? 18);
 const apiBase = (searchParams.get("apiBase") ?? "").replace(/\/+$/, "");
-const initialZoom = Number(hashParams.get("zoom") ?? searchParams.get("zoom") ?? 2);
-const initialLat = Number(hashParams.get("lat") ?? searchParams.get("lat") ?? 20);
-const initialLng = Number(hashParams.get("lng") ?? searchParams.get("lng") ?? 0);
+const initialZoom = Number(
+  hashParams.get("zoom") ?? searchParams.get("zoom") ?? 2,
+);
+const initialLat = Number(
+  hashParams.get("lat") ?? searchParams.get("lat") ?? 20,
+);
+const initialLng = Number(
+  hashParams.get("lng") ?? searchParams.get("lng") ?? 0,
+);
 const initialTheme = hashParams.get("theme") === "dark" ? "dark" : "light";
 
 // --- Tile source -----------------------------------------------------------------
@@ -20,7 +26,10 @@ const initialTheme = hashParams.get("theme") === "dark" ? "dark" : "light";
 // pinned and inspected without needing apiBase to also point at that instance, and
 // independent of whatever route layout that instance's reverse proxy exposes.
 const defaultTilesBase = () => `${apiBase}/v1/tiles`;
-let tilesBaseOverride = (searchParams.get("tilesUrl") ?? "").replace(/\/+$/, "");
+let tilesBaseOverride = (searchParams.get("tilesUrl") ?? "").replace(
+  /\/+$/,
+  "",
+);
 let plainTilesUrl = buildTileUrl(tilesBaseOverride || defaultTilesBase());
 
 function buildTileUrl(base) {
@@ -84,7 +93,7 @@ function syncUrlHash() {
   window.history.replaceState(
     null,
     "",
-    `${window.location.pathname}${window.location.search}${nextHash}`
+    `${window.location.pathname}${window.location.search}${nextHash}`,
   );
 }
 
@@ -103,7 +112,7 @@ function syncSearchParam(name, value) {
   window.history.replaceState(
     null,
     "",
-    `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`
+    `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`,
   );
 }
 
@@ -161,7 +170,9 @@ const toggleContainer = document.getElementById("theme-toggle");
 const toggleButton = document.getElementById("theme-toggle-button");
 
 function describeTheme(theme) {
-  return theme === "dark" ? { icon: "☀️", label: "Light Mode" } : { icon: "🌙", label: "Dark Mode" };
+  return theme === "dark"
+    ? { icon: "☀️", label: "Light Mode" }
+    : { icon: "🌙", label: "Dark Mode" };
 }
 
 function applyTheme(theme) {
@@ -185,12 +196,17 @@ async function loadThemeToggle() {
     if (!response.ok) return;
     templates = await response.json();
   } catch (error) {
-    console.warn("Light/dark toggle unavailable - could not load GET /v1/templates:", error);
+    console.warn(
+      "Light/dark toggle unavailable - could not load GET /v1/templates:",
+      error,
+    );
     return;
   }
 
   for (const template of Array.isArray(templates) ? templates : []) {
-    const name = String(template && template.name ? template.name : "").toLowerCase();
+    const name = String(
+      template && template.name ? template.name : "",
+    ).toLowerCase();
     const tileUrl = `${apiBase}/v1/templates/${template.id}/tiles/{z}/{x}/{y}.svg`;
     if (name === "dark") themeTileUrls.dark = tileUrl;
     if (name === "default") themeTileUrls.light = tileUrl;

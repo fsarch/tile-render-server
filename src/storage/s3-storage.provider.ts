@@ -1,4 +1,3 @@
-import { Injectable } from "@nestjs/common";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -7,6 +6,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { Injectable } from "@nestjs/common";
 import type { StorageConfigS3 } from "./storage-config.types.js";
 import type { IStorageProvider } from "./storage-provider.interface.js";
 
@@ -23,7 +23,10 @@ export class S3StorageProvider implements IStorageProvider {
       region: config.region,
       credentials:
         config.accessKeyId && config.secretAccessKey
-          ? { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey }
+          ? {
+              accessKeyId: config.accessKeyId,
+              secretAccessKey: config.secretAccessKey,
+            }
           : undefined,
       endpoint: config.endpoint,
     });
@@ -31,7 +34,9 @@ export class S3StorageProvider implements IStorageProvider {
 
   private getKey(path: string): string {
     const cleanPath = path.startsWith("/") ? path.slice(1) : path;
-    return this.prefix ? `${this.prefix}${this.prefix.endsWith("/") ? "" : "/"}${cleanPath}` : cleanPath;
+    return this.prefix
+      ? `${this.prefix}${this.prefix.endsWith("/") ? "" : "/"}${cleanPath}`
+      : cleanPath;
   }
 
   // AWS SDK v3 errors are frequently unhelpful on their own - e.g. this project's
@@ -46,29 +51,44 @@ export class S3StorageProvider implements IStorageProvider {
   // (usually more informative than its message) - the original error is preserved via
   // `cause` for anyone who wants the raw SDK error too.
   private describeError(error: unknown): string {
-    const err = error as { name?: string; message?: string; $metadata?: { httpStatusCode?: number } };
+    const err = error as {
+      name?: string;
+      message?: string;
+      $metadata?: { httpStatusCode?: number };
+    };
     const status = err.$metadata?.httpStatusCode;
-    const detail = [err.name, status ? `HTTP ${status}` : undefined, err.message]
+    const detail = [
+      err.name,
+      status ? `HTTP ${status}` : undefined,
+      err.message,
+    ]
       .filter((part) => part && part.length > 0)
       .join(", ");
     return detail;
   }
 
-  private async send<T>(op: string, key: string, action: () => Promise<T>): Promise<T> {
+  private async send<T>(
+    op: string,
+    key: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
     try {
       return await action();
     } catch (error) {
       const detail = this.describeError(error);
-      throw new Error(`S3 ${op} failed for s3://${this.bucket}/${key}${detail ? ` (${detail})` : ""}`, {
-        cause: error,
-      });
+      throw new Error(
+        `S3 ${op} failed for s3://${this.bucket}/${key}${detail ? ` (${detail})` : ""}`,
+        {
+          cause: error,
+        },
+      );
     }
   }
 
   async readFile(path: string): Promise<Buffer> {
     const key = this.getKey(path);
     const response = await this.send("GetObject", key, () =>
-      this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }))
+      this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key })),
     );
     return this.bodyToBuffer(response.Body);
   }
@@ -76,13 +96,19 @@ export class S3StorageProvider implements IStorageProvider {
   async writeFile(path: string, data: Buffer): Promise<void> {
     const key = this.getKey(path);
     await this.send("PutObject", key, () =>
-      this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: data }))
+      this.client.send(
+        new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: data }),
+      ),
     );
   }
 
   // A byte-range GetObject - see IStorageProvider.readRange for why this matters
   // for storage.data (large pmtiles archives are never read in full).
-  async readRange(path: string, offset: number, length: number): Promise<Buffer> {
+  async readRange(
+    path: string,
+    offset: number,
+    length: number,
+  ): Promise<Buffer> {
     const key = this.getKey(path);
     const response = await this.send("GetObject", key, () =>
       this.client.send(
@@ -90,8 +116,8 @@ export class S3StorageProvider implements IStorageProvider {
           Bucket: this.bucket,
           Key: key,
           Range: `bytes=${offset}-${offset + length - 1}`,
-        })
-      )
+        }),
+      ),
     );
     return this.bodyToBuffer(response.Body);
   }
@@ -99,17 +125,25 @@ export class S3StorageProvider implements IStorageProvider {
   async exists(path: string): Promise<boolean> {
     const key = this.getKey(path);
     try {
-      await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
       return true;
     } catch (error) {
-      const err = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+      const err = error as {
+        name?: string;
+        $metadata?: { httpStatusCode?: number };
+      };
       if (err.name === "NotFound" || err.$metadata?.httpStatusCode === 404) {
         return false;
       }
       const detail = this.describeError(error);
-      throw new Error(`S3 HeadObject failed for s3://${this.bucket}/${key}${detail ? ` (${detail})` : ""}`, {
-        cause: error,
-      });
+      throw new Error(
+        `S3 HeadObject failed for s3://${this.bucket}/${key}${detail ? ` (${detail})` : ""}`,
+        {
+          cause: error,
+        },
+      );
     }
   }
 
@@ -121,11 +155,15 @@ export class S3StorageProvider implements IStorageProvider {
   async deleteFile(path: string): Promise<void> {
     const key = this.getKey(path);
     await this.send("DeleteObject", key, () =>
-      this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }))
+      this.client.send(
+        new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+      ),
     );
   }
 
-  private async bodyToBuffer(body: GetObjectCommandOutput["Body"]): Promise<Buffer> {
+  private async bodyToBuffer(
+    body: GetObjectCommandOutput["Body"],
+  ): Promise<Buffer> {
     if (!body) {
       throw new Error("No body in S3 response");
     }

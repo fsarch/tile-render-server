@@ -31,7 +31,11 @@ export class LayeredStorageProvider implements IStorageProvider {
   // Delegates to the first layer that has the file, without promoting it - unlike
   // readFile's whole-file promotion, copying just the requested byte range into a
   // faster layer wouldn't leave that layer holding a usable copy of the whole file.
-  async readRange(path: string, offset: number, length: number): Promise<Buffer> {
+  async readRange(
+    path: string,
+    offset: number,
+    length: number,
+  ): Promise<Buffer> {
     for (const layer of this.layers) {
       if (await layer.exists(path)) {
         return layer.readRange(path, offset, length);
@@ -59,9 +63,15 @@ export class LayeredStorageProvider implements IStorageProvider {
   // came from, so the next read of the same path hits sooner. Best-effort: a faster
   // layer being briefly unavailable shouldn't fail a request that already succeeded
   // against a slower one.
-  private async promote(path: string, data: Buffer, hitLayerIndex: number): Promise<void> {
+  private async promote(
+    path: string,
+    data: Buffer,
+    hitLayerIndex: number,
+  ): Promise<void> {
     await Promise.all(
-      this.layers.slice(0, hitLayerIndex).map((layer) => layer.writeFile(path, data).catch(() => {}))
+      this.layers
+        .slice(0, hitLayerIndex)
+        .map((layer) => layer.writeFile(path, data).catch(() => {})),
     );
   }
 }

@@ -1,4 +1,14 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Res } from "@nestjs/common";
+import type { ServerResponse } from "node:http";
+import { Public } from "@fsarch/server/auth";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Res,
+} from "@nestjs/common";
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -11,12 +21,14 @@ import {
   ApiProduces,
   ApiTags,
 } from "@nestjs/swagger";
-import { Public } from "@fsarch/server/auth";
-import type { ServerResponse } from "node:http";
-import { TilesService } from "../tiles/tiles.service.js";
-import { assertTileBounds, parseTileCoordinate, writeSvgResponse } from "../tiles/tile-request.util.js";
-import { parseUuidParam } from "../common/parse-uuid-param.util.js";
 import { TemplateService } from "../../repositories/template/template.service.js";
+import { parseUuidParam } from "../common/parse-uuid-param.util.js";
+import {
+  assertTileBounds,
+  parseTileCoordinate,
+  writeSvgResponse,
+} from "../tiles/tile-request.util.js";
+import { TilesService } from "../tiles/tiles.service.js";
 
 export interface TemplateSummary {
   id: string;
@@ -24,11 +36,22 @@ export interface TemplateSummary {
   isActive: boolean;
 }
 
-function toSummary({ id, name, isActive }: { id: string; name: string; isActive: boolean }): TemplateSummary {
+function toSummary({
+  id,
+  name,
+  isActive,
+}: {
+  id: string;
+  name: string;
+  isActive: boolean;
+}): TemplateSummary {
   return { id, name, isActive };
 }
 
-function parseCreateTemplateBody(body: unknown): { name: string; colors: Record<string, string> } {
+function parseCreateTemplateBody(body: unknown): {
+  name: string;
+  colors: Record<string, string>;
+} {
   if (typeof body !== "object" || body === null) {
     throw new BadRequestException("Request body must be a JSON object");
   }
@@ -40,9 +63,13 @@ function parseCreateTemplateBody(body: unknown): { name: string; colors: Record<
     return { name: name.trim(), colors: {} };
   }
   if (typeof colors !== "object" || colors === null || Array.isArray(colors)) {
-    throw new BadRequestException('"colors" must be an object mapping CSS variable names to color values');
+    throw new BadRequestException(
+      '"colors" must be an object mapping CSS variable names to color values',
+    );
   }
-  for (const [key, value] of Object.entries(colors as Record<string, unknown>)) {
+  for (const [key, value] of Object.entries(
+    colors as Record<string, unknown>,
+  )) {
     if (typeof value !== "string") {
       throw new BadRequestException(`"colors.${key}" must be a string`);
     }
@@ -62,14 +89,15 @@ function parseCreateTemplateBody(body: unknown): { name: string; colors: Record<
 export class TemplatesController {
   constructor(
     private readonly tilesService: TilesService,
-    private readonly templateService: TemplateService
+    private readonly templateService: TemplateService,
   ) {}
 
   @Get()
   @Public()
   @ApiOperation({
     summary: "List available templates",
-    description: "Lets clients (e.g. the example viewer's light/dark toggle) look up a template's id by name.",
+    description:
+      "Lets clients (e.g. the example viewer's light/dark toggle) look up a template's id by name.",
   })
   @ApiOkResponse({ description: "Available templates" })
   async list(): Promise<TemplateSummary[]> {
@@ -79,22 +107,31 @@ export class TemplatesController {
 
   @Get(":id/tiles/:z/:x/:y.svg")
   @Public()
-  @ApiOperation({ summary: "Render an SVG tile on demand, styled with a specific template" })
+  @ApiOperation({
+    summary: "Render an SVG tile on demand, styled with a specific template",
+  })
   @ApiProduces("image/svg+xml")
   @ApiParam({ name: "id", type: String, description: "A Template's id (uuid)" })
   @ApiParam({ name: "z", type: Number, example: 0 })
   @ApiParam({ name: "x", type: Number, example: 0 })
   @ApiParam({ name: "y", type: Number, example: 0 })
   @ApiOkResponse({ description: "SVG tile response" })
-  @ApiBadRequestResponse({ description: "Tile coordinates or template id are invalid" })
-  @ApiNotFoundResponse({ description: "Tile is empty/missing/outside the dataset, or no template has that id" })
-  @ApiInternalServerErrorResponse({ description: "Tile rendering failed unexpectedly" })
+  @ApiBadRequestResponse({
+    description: "Tile coordinates or template id are invalid",
+  })
+  @ApiNotFoundResponse({
+    description:
+      "Tile is empty/missing/outside the dataset, or no template has that id",
+  })
+  @ApiInternalServerErrorResponse({
+    description: "Tile rendering failed unexpectedly",
+  })
   async getTile(
     @Param("id") idParam: string,
     @Param("z") zParam: string,
     @Param("x") xParam: string,
     @Param("y") yParam: string,
-    @Res() response: ServerResponse
+    @Res() response: ServerResponse,
   ): Promise<void> {
     const id = parseUuidParam("id", idParam);
     const z = parseTileCoordinate("z", zParam, 30);
@@ -112,7 +149,10 @@ export class TemplatesController {
   // (post-filtering) into every tile response, so anonymous write access isn't
   // acceptable the way anonymous reads are.
   @Post()
-  @ApiOperation({ summary: "Create a new template (inactive by default - see POST /:id/activate)" })
+  @ApiOperation({
+    summary:
+      "Create a new template (inactive by default - see POST /:id/activate)",
+  })
   @ApiBody({
     schema: {
       type: "object",
@@ -124,7 +164,9 @@ export class TemplatesController {
     },
   })
   @ApiCreatedResponse({ description: "The created template" })
-  @ApiBadRequestResponse({ description: "The request body is missing/malformed" })
+  @ApiBadRequestResponse({
+    description: "The request body is missing/malformed",
+  })
   async create(@Body() body: unknown): Promise<TemplateSummary> {
     const { name, colors } = parseCreateTemplateBody(body);
     const template = await this.templateService.create(name, colors);
@@ -132,7 +174,10 @@ export class TemplatesController {
   }
 
   @Post(":id/activate")
-  @ApiOperation({ summary: "Activate a template by id, deactivating whichever was active before" })
+  @ApiOperation({
+    summary:
+      "Activate a template by id, deactivating whichever was active before",
+  })
   @ApiParam({ name: "id", type: String, description: "A Template's id (uuid)" })
   @ApiOkResponse({ description: "The now-active template" })
   @ApiBadRequestResponse({ description: "The id is not a valid uuid" })

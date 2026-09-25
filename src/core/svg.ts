@@ -1,5 +1,10 @@
 import type { NormalizedGeometry, Point2D } from "./geometry.js";
-import { getBackgroundFill, getLayerOrder, THEMEABLE_COLOR_VARIABLES, type SvgStyle } from "./styles.js";
+import {
+  getBackgroundFill,
+  getLayerOrder,
+  type SvgStyle,
+  THEMEABLE_COLOR_VARIABLES,
+} from "./styles.js";
 
 function escapeXml(value: unknown): string {
   return String(value)
@@ -16,7 +21,9 @@ function formatNumber(value: number): string {
 
 function attributesToString(attributes: Record<string, unknown> = {}): string {
   return Object.entries(attributes)
-    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .filter(
+      ([, value]) => value !== undefined && value !== null && value !== "",
+    )
     .map(([key, value]) => `${key}="${escapeXml(value)}"`)
     .join(" ");
 }
@@ -42,7 +49,7 @@ export function renderGeometryElements(
   geometry: NormalizedGeometry,
   style: SvgStyle,
   className: string,
-  extraAttributes: Record<string, unknown> = {}
+  extraAttributes: Record<string, unknown> = {},
 ): string[] {
   const baseAttributes: Record<string, unknown> = {
     ...style,
@@ -78,7 +85,7 @@ export function renderGeometryElements(
         cx: formatNumber(point.x),
         cy: formatNumber(point.y),
         r: formatNumber(radius),
-      })} />`
+      })} />`,
   );
 }
 
@@ -87,10 +94,15 @@ export function renderRailwayElements(
   railStyle: SvgStyle,
   sleeperStyle: SvgStyle,
   className: string,
-  extraAttributes: Record<string, unknown> = {}
+  extraAttributes: Record<string, unknown> = {},
 ): string[] {
   if (geometry.kind !== "LineString") {
-    return renderGeometryElements(geometry, railStyle, className, extraAttributes);
+    return renderGeometryElements(
+      geometry,
+      railStyle,
+      className,
+      extraAttributes,
+    );
   }
 
   const output: string[] = [];
@@ -107,7 +119,7 @@ export function renderRailwayElements(
           class: className || undefined,
           ...extraAttributes,
           d,
-        })} />`
+        })} />`,
       );
     }
 
@@ -133,7 +145,7 @@ export function renderRailwayElements(
         const x2 = cx + nx * sleeperHalfLength;
         const y2 = cy + ny * sleeperHalfLength;
         sleeperSegments.push(
-          `M ${formatNumber(x1)} ${formatNumber(y1)} L ${formatNumber(x2)} ${formatNumber(y2)}`
+          `M ${formatNumber(x1)} ${formatNumber(y1)} L ${formatNumber(x2)} ${formatNumber(y2)}`,
         );
         distance += sleeperSpacing;
       }
@@ -148,7 +160,7 @@ export function renderRailwayElements(
         class: className ? `${className} rail-sleeper` : "rail-sleeper",
         ...extraAttributes,
         d: sleeperSegments.join(" "),
-      })} />`
+      })} />`,
     );
   }
 
@@ -160,7 +172,7 @@ export function renderLabelElement(
   text: string,
   className: string,
   textStyle: SvgStyle = {},
-  extraAttributes: Record<string, unknown> = {}
+  extraAttributes: Record<string, unknown> = {},
 ): string {
   if (!anchor || text.trim().length === 0) return "";
   return `<text ${attributesToString({
@@ -178,7 +190,7 @@ export function renderLineLabelElement(
   text: string,
   className: string,
   textStyle: SvgStyle = {},
-  extraAttributes: Record<string, unknown> = {}
+  extraAttributes: Record<string, unknown> = {},
 ): string {
   if (!pathId || !pathData || text.trim().length === 0) return "";
   const hiddenPath = `<path ${attributesToString({
@@ -196,10 +208,15 @@ export function renderLineLabelElement(
   return `${hiddenPath}<text ${textAttrs}><textPath href="#${escapeXml(pathId)}" startOffset="50%">${escapeXml(text)}</textPath></text>`;
 }
 
-export function buildSvgDocument(groups: Map<string, string>, overlayContent = ""): string {
+export function buildSvgDocument(
+  groups: Map<string, string>,
+  overlayContent = "",
+): string {
   const ordered = getLayerOrder();
   const layerContent = ordered
-    .map((layerName) => `<g id="${layerName}">${groups.get(layerName) ?? ""}</g>`)
+    .map(
+      (layerName) => `<g id="${layerName}">${groups.get(layerName) ?? ""}</g>`,
+    )
     .join("");
 
   const overlay = overlayContent ? `<g id="labels">${overlayContent}</g>` : "";
@@ -233,13 +250,18 @@ const SAFE_CSS_COLOR_VALUE = /^[a-zA-Z0-9#(),.\s%-]{1,64}$/;
 // rather than producing broken markup or failing the request.
 export function injectStyleTemplate(
   svgDocument: string,
-  colors: Record<string, string> | null | undefined
+  colors: Record<string, string> | null | undefined,
 ): string {
   if (!colors) return svgDocument;
 
-  const declarations = THEMEABLE_COLOR_VARIABLES.filter((name) => Object.hasOwn(colors, name))
+  const declarations = THEMEABLE_COLOR_VARIABLES.filter((name) =>
+    Object.hasOwn(colors, name),
+  )
     .map((name): [string, string] => [name, colors[name]])
-    .filter(([, value]) => typeof value === "string" && SAFE_CSS_COLOR_VALUE.test(value))
+    .filter(
+      ([, value]) =>
+        typeof value === "string" && SAFE_CSS_COLOR_VALUE.test(value),
+    )
     .map(([name, value]) => `${name}:${value};`)
     .join("");
 
@@ -251,5 +273,7 @@ export function injectStyleTemplate(
   // the first one found is reliably the opening tag's closing bracket.
   const insertAt = svgDocument.indexOf(">") + 1;
   if (insertAt <= 0) return svgDocument;
-  return svgDocument.slice(0, insertAt) + styleTag + svgDocument.slice(insertAt);
+  return (
+    svgDocument.slice(0, insertAt) + styleTag + svgDocument.slice(insertAt)
+  );
 }

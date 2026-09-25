@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { DATABASE_OPTIONS } from "./index.js";
 import { DatasetVersion } from "./entities/dataset-version.entity.js";
 import { LabelAnchor } from "./entities/label-anchor.entity.js";
 import { Template } from "./entities/template.entity.js";
+import { DATABASE_OPTIONS } from "./index.js";
 
 describe("DATABASE_OPTIONS", () => {
   it("registers the LabelAnchor, DatasetVersion, and Template entities", () => {

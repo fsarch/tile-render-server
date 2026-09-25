@@ -1,4 +1,11 @@
-import { BadRequestException, Body, Controller, Get, Param, Post } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+} from "@nestjs/common";
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -9,8 +16,8 @@ import {
   ApiParam,
   ApiTags,
 } from "@nestjs/swagger";
-import { parseUuidParam } from "../common/parse-uuid-param.util.js";
 import { DatasetVersionService } from "../../repositories/dataset-version/dataset-version.service.js";
+import { parseUuidParam } from "../common/parse-uuid-param.util.js";
 
 export interface DatasetVersionSummary {
   id: string;
@@ -18,7 +25,15 @@ export interface DatasetVersionSummary {
   isActive: boolean;
 }
 
-function toSummary({ id, path, isActive }: { id: string; path: string; isActive: boolean }): DatasetVersionSummary {
+function toSummary({
+  id,
+  path,
+  isActive,
+}: {
+  id: string;
+  path: string;
+  isActive: boolean;
+}): DatasetVersionSummary {
   return { id, path, isActive };
 }
 
@@ -57,14 +72,23 @@ export class DatasetVersionsController {
 
   @Post()
   @ApiOperation({
-    summary: "Register a new dataset version (inactive by default - see POST /:id/activate)",
+    summary:
+      "Register a new dataset version (inactive by default - see POST /:id/activate)",
     description:
       "`path` is resolved through storage.data at archive-open time (see config.yaml), not necessarily a " +
       "literal filesystem path - a key relative to a local base directory or an S3 bucket/prefix.",
   })
-  @ApiBody({ schema: { type: "object", required: ["path"], properties: { path: { type: "string" } } } })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["path"],
+      properties: { path: { type: "string" } },
+    },
+  })
   @ApiCreatedResponse({ description: "The created dataset version" })
-  @ApiBadRequestResponse({ description: "The request body is missing/malformed" })
+  @ApiBadRequestResponse({
+    description: "The request body is missing/malformed",
+  })
   async create(@Body() body: unknown): Promise<DatasetVersionSummary> {
     const { path } = parseCreateDatasetVersionBody(body);
     const version = await this.datasetVersionService.create(path);
@@ -73,12 +97,17 @@ export class DatasetVersionsController {
 
   @Post(":id/activate")
   @ApiOperation({
-    summary: "Activate a dataset version by id, deactivating whichever was active before",
+    summary:
+      "Activate a dataset version by id, deactivating whichever was active before",
     description:
       "Takes effect on the API's next restart only - the already-opened PMTiles archive isn't hot-swapped " +
       "mid-process (see TilesService.getInputPath).",
   })
-  @ApiParam({ name: "id", type: String, description: "A DatasetVersion's id (uuid)" })
+  @ApiParam({
+    name: "id",
+    type: String,
+    description: "A DatasetVersion's id (uuid)",
+  })
   @ApiOkResponse({ description: "The now-active dataset version" })
   @ApiBadRequestResponse({ description: "The id is not a valid uuid" })
   @ApiNotFoundResponse({ description: "No dataset version has that id" })
