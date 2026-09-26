@@ -1,6 +1,6 @@
 {
   "name": "tile-render-server",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "On-demand SVG tile API backed by PMTiles",
   "main": "dist/main.js",
   "scripts": {
@@ -22,7 +22,6 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1140.0",
     "@fsarch/server": "^0.3.3",
-    "@opentelemetry/api": "^1.9.1",
     "@mapbox/vector-tile": "^3.0.0",
     "@nestjs/common": "^12.1.0",
     "@nestjs/config": "^12.0.1",
@@ -30,6 +29,7 @@
     "@nestjs/platform-express": "^12.1.0",
     "@nestjs/swagger": "^12.0.2",
     "@nestjs/typeorm": "^12.0.1",
+    "@opentelemetry/api": "^1.9.1",
     "js-yaml": "^5.4.2",
     "minimist": "^1.2.8",
     "pbf": "^5.1.2",
